@@ -1,11 +1,14 @@
-#ifndef __SUB_H__
-#define __SUB_H__
+#ifndef __PUB_SUB_H__
+#define __PUB_SUB_H__
 
 #include <stdint.h>
 #include <unistd.h>
 
 #include <string>
 #include <memory>
+
+#include "emb_msg.h"
+#include "ezlog.h"
 
 using namespace std;
 
@@ -23,7 +26,8 @@ class PubSub
         PubSub(std::string broker_id);
         ~PubSub();
 
-        void subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler);
+        emb_id_t subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler);
+        void unsubscribe(emb_id_t client_id);
         void publish(std::string topic, void* buf , int32_t len);
 
         void event_loop();

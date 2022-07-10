@@ -1,24 +1,34 @@
 #include <stdio.h>
 #include <string>
 #include <memory>
+#include <vector>
+#include <list>
+#include <functional>
 
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <poll.h>
+#include <sys/epoll.h>
 
 #include "emb_msg.h"
-#include "emb_log.h"
 #include "pub_sub.h"
+
+#include "ezlog.h"
+#include "event_util.h"
 
 using namespace std;
 
+struct SubscriberItemClient {
+    emb_id_t        client_id;
+    std::string     topic;
+    std::shared_ptr<SubscribeHandler> handler;
+};
 
 class PubSubImpl
 {
     public:
         PubSubImpl(std::string broker_id)
             : m_fd(-1)
-            , m_pid(-1)
+            , m_subscribers()
         {
             m_fd = socket(AF_UNIX, SOCK_STREAM, 0);
 
@@ -31,9 +41,56 @@ class PubSubImpl
             int ret = connect(m_fd, (struct sockaddr*)&addr, sizeof addr);
             if (ret < 0)
             {
-                perror("sub sonnect failed : ");
+                LOGE << "sub sonnect failed : ";
                 return;
             }
+            
+            EmbCommandItem command_item;
+            command_item.command = EMB_MSG_COMMAND_PUBLISH;
+            command_item.handler = [this](int fd, std::string command, void* head) -> void
+            {
+                emb_msg_t* msg = (emb_msg_t*)head;
+                char* p_body = (char*)msg + sizeof(emb_msg_t);
+                std::string topic = p_body;
+                char* data = (char*)p_body + msg->topic_len;
+                LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
+                for(auto it = m_subscribers.begin(); it > m_subscribers.end(); it++ ) {
+                    if((*it).topic == topic ) {
+                        (*it).handler->handleMessage(topic, data, msg->data_len);
+                    }
+                }
+            };
+            m_command_list.push_back(command_item);
+
+            command_item.command = EMB_MSG_COMMAND_SUBACK;
+            command_item.handler = [this](int fd, std::string command, void* head) -> void
+            {
+                emb_msg_t* msg = (emb_msg_t*)head;
+                char* p_body = (char*)msg + sizeof(emb_msg_t);
+                std::string topic = p_body;
+                char* data = (char*)p_body + msg->topic_len;
+                std::string client_id = data;
+                LOGI << "event =" << command << ", topic =" << topic << ", clinet_id =" << client_id;
+                for(auto it = m_subscribers.begin(); it > m_subscribers.end(); it++ ) {
+                    if((*it).client_id == EMB_ID_NOT_USE ) {
+                        const char* p = client_id.c_str();
+                        char* end;
+                        (*it).client_id = strtoul(p, &end, 10);
+                        break;
+                    }
+                }
+            };
+            m_command_list.push_back(command_item);
+
+            m_loop = std::make_unique<EventLoop>();
+
+            EventLoopItem loop_item;
+            loop_item.fd = m_fd;
+            loop_item.dispatch = [this](int fd) -> void
+            {
+                read_event(fd);
+            };
+            m_loop->add_item(loop_item);
 
         }
 
@@ -45,13 +102,17 @@ class PubSubImpl
             }
         }
 
-        void subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler)
+        emb_id_t subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler)
         {
-            m_topic = topic;
-            m_handler = handler;
-
             int ret, w_len;
             emb_msg_t msg;
+
+            SubscriberItemClient item;
+            item.topic = topic;
+            item.handler = handler;
+            item.client_id = EMB_ID_NOT_USE;
+            m_subscribers.push_back(item);
+            auto it = m_subscribers.end();
 
             msg.head_sign = EMB_MSG_HEAD_SIGN;
             msg.topic_len  = topic.size() + 1;
@@ -70,7 +131,13 @@ class PubSubImpl
                 LOGE << "write fail : topic";
             }
 
-            pthread_create(&m_pid, NULL, PubSubImpl::thread_run, this);            
+            read_event(m_fd);
+
+            return ((*it).client_id);
+        }
+        void unsubscribe(emb_id_t client_id)
+        {
+
         }
 
         void publish(std::string topic, void* buf , int32_t len)
@@ -104,88 +171,56 @@ class PubSubImpl
             }
 
         }
- 
-        void event_loop()
+
+        void read_event(int fd)
         {
-            while(true) 
+            char buf[512];
+            bzero(buf, sizeof buf);
+            int len = read(fd, buf, sizeof buf);
+            if (len > 0) 
             {
-                sleep(10);
-            }
-        }
-
-        static void* thread_run(void* args)
-        {
-            PubSubImpl* impl = (PubSubImpl*)args;
-            impl->run();
-
-            return NULL;
-        }
-
-        void run()
-        {
-            printf("sub thread running....\n");
-            while (1)
-            {
-                struct pollfd fd[1];
-                fd[0].fd = m_fd;
-                fd[0].events = POLLIN;
-
-                int ret = poll(fd, 1, -1);
+                emb_msg_t*  p_msg = (emb_msg_t*)buf;
                 
-                if (ret > 0)
+                if( p_msg->head_sign != EMB_MSG_HEAD_SIGN) {
+                        LOGE << "msg header destoyed";
+                }
+
+                char str[5];
+                bzero(str, sizeof str);
+                strncpy(str, p_msg->command, sizeof(p_msg->command)); 
+                std::string command(str);
+
+                for(auto it = m_command_list.begin(); it != m_command_list.end() ; it++) 
                 {
-                    if (fd[0].revents & POLLIN)
+                    if( (*it).command == command ) 
                     {
-                        char buf[512];
-                        bzero(buf, sizeof buf);
-                        int len = read(fd[0].fd, buf, sizeof buf);
-                        if (len > 0) 
-                        {
-                            emb_msg_t*  p_msg = (emb_msg_t*)buf;
-                            uint8_t*    p_body = (uint8_t*)(p_msg + 1);
-                            
-
-                            if( p_msg->head_sign != EMB_MSG_HEAD_SIGN) {
-                                    LOGE << "msg header destoyed";
-                                }
-
-                            uint32_t    topic_len = p_msg->topic_len;
-                            uint32_t    data_len  = p_msg->data_len;
-
-                            char str[5];
-                            bzero(str, sizeof str);
-                            strncpy(str, p_msg->command, sizeof(p_msg->command)); 
-
-                            std::string command(str);
-
-                            if( command == EMB_MSG_COMMAND_PUBLISH ) {
-                                std::string topic = (char*)p_body;
-                                char* data = (char*)p_body + topic_len;
-                                LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
-                                m_handler->handleMessage(topic, data, p_msg->data_len);
-                            }
-
-                        }
-                        else if (len == 0) 
-                        {
-                            printf("[PUBSUB]socket %d disconnected\n", fd[0].fd);
-                            break;
-                        }
-                        else
-                        {
-                            perror("read failed:");
-                        }
+                        (*it).handler(fd, command, p_msg);
                     }
                 }
             }
+            else if (len == 0) 
+            {
+                LOGE << "socket " <<  fd << "disconnected";
+                return; 
+            }
+            else
+            {
+                //TODO add EINTR, EAGAIN...
+                LOGE << "read failed:";
+                return; 
+            }
         }
 
+        void event_loop() 
+        {
+            m_loop->run();
+        }
 
     private:
         int m_fd;
-        pthread_t m_pid;
-        std::string m_topic;
-        std::shared_ptr<SubscribeHandler> m_handler = nullptr;
+        std::unique_ptr<EventLoop> m_loop;
+        std::vector<SubscriberItemClient> m_subscribers;
+        std::vector<EmbCommandItem>   m_command_list;
 };
 
 PubSub::PubSub(std::string broker_id)
@@ -197,9 +232,14 @@ PubSub::~PubSub()
 {
 }
 
-void PubSub::subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler)
+emb_id_t PubSub::subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler)
 {
-    m_impl->subscribe(topic, handler);
+    return m_impl->subscribe(topic, handler);
+}
+
+void PubSub::unsubscribe(emb_id_t client_id)
+{
+    return m_impl->unsubscribe(client_id);
 }
 
 void PubSub::publish(std::string topic, void* buf , int32_t len)
@@ -210,5 +250,4 @@ void PubSub::publish(std::string topic, void* buf , int32_t len)
 void PubSub::event_loop(void)
 {
     m_impl->event_loop();
-
 }

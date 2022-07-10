@@ -3,6 +3,8 @@
 
 #include <string>
 #include <memory>
+#include <iostream>
+
 #include "pub_sub.h"
 
 using namespace std;
@@ -12,14 +14,15 @@ class MySubscribeHandler : public SubscribeHandler
     public:
         virtual void handleMessage(std::string topic, void *buf, int32_t len)
         {
-            printf("[PUBSUB] handleMessage : %s, %d \n", (char*)buf, len);
+            std::cout << " handleMessage : " << (char*)buf << std::endl;
         }
 };
 
 static void usage()
 {
-    printf("./pubsub pub topic message\n");
-    printf("./pubsub sub topic\n");
+    std::cout << "Usage:" << std::endl ;
+    std::cout << "./pubsub pub <topic> <message>" << std::endl ;
+    std::cout << "./pubsub sub <topic>" << std::endl ;
 }
 int main(int argc, char *argv[])
 {

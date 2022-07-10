@@ -14,14 +14,16 @@
 #include <algorithm>
 
 #include "emb_msg.h"
-#include "emb_log.h"
+#include "event_util.h"
+#include "ezlog.h"
 
 using namespace std;
 
 typedef struct {
+    emb_id_t        client_id;
     std::string     topic;
     int             fd;
-} subscriber_item_t;
+} SuscribeItemBroker;
 
 class BrokerImpl
 {
@@ -30,7 +32,6 @@ class BrokerImpl
           : m_serverFd(-1)
           , m_clients()
           , m_subscribers()
-          , m_pid(-1)
           , m_running(true)
           , m_broker_id(broker_id)
         {
@@ -51,12 +52,102 @@ class BrokerImpl
             }
 
             listen(m_serverFd, 64);
+
+            EmbCommandItem command_item;
+            command_item.command = EMB_MSG_COMMAND_PUBLISH;
+            command_item.handler = [this](int fd, std::string command, void* head) -> void
+            {
+                emb_msg_t* msg = (emb_msg_t*)head;
+                char* p_body = (char*)msg + sizeof(emb_msg_t);
+                std::string topic = p_body;
+                char* data = (char*)p_body + msg->topic_len;
+                LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
+                event_publish(topic, data, msg->data_len);
+            };
+            m_command_list.push_back(command_item);
+
+            command_item.command = EMB_MSG_COMMAND_SUBSCRIBE;
+            command_item.handler = [this](int fd, std::string command, void* head) -> void
+            {
+                emb_msg_t* msg = (emb_msg_t*)head;
+                char* p_body = (char*)msg + sizeof(emb_msg_t);
+                std::string topic = p_body;
+                LOGI << "event =" << command << ", topic =" << topic;
+
+                SuscribeItemBroker item;
+                item.topic = topic;
+                item.fd = fd;
+                item.client_id = 10000 + m_subscribers.size();
+                m_subscribers.push_back(item);
+
+                event_suback(fd, topic, item.client_id);
+            };
+            m_command_list.push_back(command_item);
+
+            command_item.command = EMB_MSG_COMMAND_UNSUBSCRIBE;
+            command_item.handler = [this](int fd, std::string command, void* head) -> void
+            {
+                emb_msg_t* msg = (emb_msg_t*)head;
+                char* p_body = (char*)msg + sizeof(emb_msg_t);
+                std::string topic = p_body;
+                char* data = (char*)p_body + msg->topic_len;
+
+                std::string client_id = data;
+                LOGI << "event =" << command << ", topic =" << topic << ", clinet_id =" << client_id;
+                
+                const char* p = client_id.c_str();
+                char* end;
+                emb_id_t client_id_ul = strtoul(p, &end, 10);
+
+                for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
+                {
+                    if((*it).client_id == client_id_ul) {
+                        it = m_subscribers.erase(it);
+                    }
+                    else {
+                        it++;
+                    }
+                }
+
+                event_unsuback(fd, topic, client_id_ul);
+            };
+
+            m_command_list.push_back(command_item);
+
+            m_loop = std::make_unique<EventLoop>();
+
+            EventLoopItem loop_item;
+            loop_item.fd = m_serverFd;
+            loop_item.dispatch = [this](int fd) -> void
+            {
+                int  conn_sock;
+                sockaddr_un addr;
+                socklen_t addrlen = 0;
+                conn_sock = accept(m_serverFd,
+                                    (struct sockaddr *) &addr, &addrlen);
+                if (conn_sock == -1) {
+                    LOGE << "accept";
+                    return;
+                }
+
+                EventLoopItem conn_item;
+                conn_item.fd = conn_sock;
+                conn_item.dispatch = [this](int fd) -> void
+                {
+                    read_event(fd);
+                };
+                m_loop->add_item(conn_item);
+
+                m_clients.push_back(conn_sock);
+
+            };
+            m_loop->add_item(loop_item);
+
         }
 
         ~BrokerImpl()
         {
             m_running = false;
-            pthread_join(m_pid, NULL);
             close(m_serverFd);
 
             unlink(m_broker_id.c_str());
@@ -64,6 +155,71 @@ class BrokerImpl
             for (auto it = m_clients.begin(); it != m_clients.end(); it++)
             {
                 close(*it);
+            }
+        }
+
+        void event_suback(int fd, std::string topic, uint32_t client_id)
+        {
+            int ret, w_len;
+            emb_msg_t msg;
+            std::string client_id_str = std::to_string(client_id);
+
+            msg.head_sign = EMB_MSG_HEAD_SIGN;
+            msg.topic_len = topic.size() + 1;
+            msg.data_len  = client_id_str.size() + 1;
+            memcpy(msg.command, EMB_MSG_COMMAND_SUBACK, sizeof(msg.command));
+
+            w_len = sizeof(msg);
+            ret = write(fd, &msg, w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+            /* write topic */
+            w_len = msg.topic_len;
+            ret = write(fd, topic.c_str(), w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+            /* write message */
+            w_len = msg.data_len;
+            ret = write(fd, client_id_str.c_str(), w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+        }
+
+        void event_unsuback(int fd, std::string topic, uint32_t client_id)
+        {
+            int ret, w_len;
+            emb_msg_t msg;
+            std::string client_id_str = std::to_string(client_id);
+
+            msg.head_sign = EMB_MSG_HEAD_SIGN;
+            msg.topic_len = topic.size() + 1;
+            msg.data_len  = client_id_str.size() + 1;
+            memcpy(msg.command, EMB_MSG_COMMAND_UNSUBACK, sizeof(msg.command));
+
+            w_len = sizeof(msg);
+            ret = write(fd, &msg, w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+            /* write topic */
+            w_len = msg.topic_len;
+            ret = write(fd, topic.c_str(), w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+            /* write message */
+            w_len = msg.data_len;
+            ret = write(fd, client_id_str.c_str(), w_len);
+            if(ret != w_len) {
+                perror("write fail");
             }
         }
 
@@ -110,105 +266,50 @@ class BrokerImpl
             bzero(buf, sizeof buf);
             int ret = read(fd, buf, sizeof buf);
             if( ret > 0 ) {
-
-                emb_msg_t*  p_msg =  (emb_msg_t*)buf;
-                uint8_t*    p_body = (uint8_t*)(p_msg + 1);
-
+                emb_msg_t*  p_msg = (emb_msg_t*)buf;
+                
                 if( p_msg->head_sign != EMB_MSG_HEAD_SIGN) {
-                    LOGE << "msg header destoyed";
+                        LOGE << "msg header destoyed";
                 }
-
-                uint32_t    topic_len = p_msg->topic_len;
-                uint32_t    data_len = p_msg->data_len;
 
                 char str[5];
                 bzero(str, sizeof str);
                 strncpy(str, p_msg->command, sizeof(p_msg->command)); 
-
                 std::string command(str);
 
-                if (command == EMB_MSG_COMMAND_SUBSCRIBE) {
-                    std::string topic = (char*)p_body;
-                    LOGI << "event =" << command << ", topic =" << topic;
-
-                    subscriber_item_t item;
-                    item.topic = topic;
-                    item.fd = fd;                                ;
-                    m_subscribers.push_back(item);
+                for(auto it = m_command_list.begin(); it != m_command_list.end() ; it++) 
+                {
+                    if( (*it).command == command ) 
+                    {
+                        (*it).handler(fd, command, p_msg);
+                    }
                 }
-                else if (command == EMB_MSG_COMMAND_PUBLISH) {
-                    std::string topic = (char*)p_body;
-                    char* data = (char*)p_body + topic_len;
-                    LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
-                    event_publish(topic, data, p_msg->data_len);
-                }
-
             }
             else if (ret == 0) 
             {
-                LOGI << "socket fd = " << fd << "disconnect."; 
+                LOGI << "socket fd = " << fd << " disconnect."; 
                 m_clients.erase(std::remove(m_clients.begin(), m_clients.end(), fd), m_clients.end());
                 close(fd);
+            }
+            else
+            {
+                //TODO add EINTR, EAGAIN...
+                LOGE << "read failed:";
+                return; 
             }
         }
 
         void event_loop()
         {
-            #define MAX_EVENTS 10
-           struct epoll_event ev, events[MAX_EVENTS];
-           int conn_sock, nfds, epollfd;
-
-            if ((epollfd = epoll_create1(0)) == -1) {
-                LOGE << "epoll_create";
-                return;
-            }
-            ev.data.fd = m_serverFd;
-            ev.events = EPOLLIN;
-
-            if (epoll_ctl(epollfd, EPOLL_CTL_ADD, m_serverFd, &ev) == -1) {
-                LOGE << "epoll_ctl::EPOLL_CTL_ADD m_serverFd ";
-                (void) close(epollfd);
-                return;
-            }
-
-            while (m_running)
-            {
-                nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
-                if (nfds == -1) {
-                    LOGE << "epoll_wait";
-                    break;
-                }
-
-                for (int n = 0; n < nfds; n++) {
-                    if (events[n].data.fd == m_serverFd) {
-                        sockaddr_un addr;
-                        socklen_t addrlen = 0;
-                        conn_sock = accept(m_serverFd,
-                                            (struct sockaddr *) &addr, &addrlen);
-                        if (conn_sock == -1) {
-                            LOGE << "accept";
-                            continue;
-                        }
-                        ev.events = EPOLLIN | EPOLLET;
-                        ev.data.fd = conn_sock;
-                        if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
-                            LOGE << "epoll_ctl: conn_sock";
-                            continue;
-                        }
-                        m_clients.push_back(conn_sock);
-
-                   } else {
-                       read_event(events[n].data.fd);
-                   }
-               }
-            }
+            m_loop->run();
         }
 
     private:
         int m_serverFd;
         std::vector<int> m_clients;
-        std::vector<subscriber_item_t> m_subscribers;
-        pthread_t       m_pid;
+        std::unique_ptr<EventLoop> m_loop;
+        std::vector<EmbCommandItem>   m_command_list;
+        std::list<SuscribeItemBroker> m_subscribers;
         bool        m_running;
         std::string m_broker_id;
 };

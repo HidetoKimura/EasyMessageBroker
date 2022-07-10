@@ -2,6 +2,7 @@
 #define __EMB_MSG_H__
 
 #include <stdint.h>
+#include <functional>
 
 #define EMB_MSG_HEAD_SIGN                    0x23424D45 // EMB#
 
@@ -27,5 +28,17 @@ typedef struct {
     uint32_t    topic_len;
     uint32_t    data_len;
 } emb_msg_t;
+
+#define EMB_ID_NOT_USE  0
+
+typedef uint32_t emb_id_t;
+
+using EmbHandler = std::function<void(int fd, std::string command, void* msg)>;
+
+struct EmbCommandItem {
+    std::string     command;
+    EmbHandler      handler;
+};
+
 
 #endif
