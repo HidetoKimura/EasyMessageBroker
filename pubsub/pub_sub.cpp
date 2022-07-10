@@ -6,7 +6,8 @@
 #include <sys/un.h>
 #include <poll.h>
 
-#include "common_msg.h"
+#include "emb_msg.h"
+#include "emb_log.h"
 #include "pub_sub.h"
 
 using namespace std;
@@ -50,23 +51,23 @@ class PubSubImpl
             m_handler = handler;
 
             int ret, w_len;
-            common_msg_t msg;
+            emb_msg_t msg;
 
-            msg.head_sign = COMMON_MSG_HEAD_SIGN;
-            msg.length  = topic.size() + 1;
-            strncpy(msg.command, COMMON_MSG_COMMAND_SUBSCRIBE_REQ, sizeof(msg.command));
+            msg.head_sign = EMB_MSG_HEAD_SIGN;
+            msg.topic_len  = topic.size() + 1;
+            strncpy(msg.command, EMB_MSG_COMMAND_SUBSCRIBE, sizeof(msg.command));
             
             w_len = sizeof(msg);
             ret = write(m_fd, &msg, w_len);
             if(ret != w_len) {
-                perror("write fail");
+                LOGE << "write fail : msg";
             }
 
             /* write topic */
-            w_len = topic.size() + 1;
+            w_len = msg.topic_len;
             ret = write(m_fd, topic.c_str(), w_len);
             if(ret != w_len) {
-                perror("write fail");
+                LOGE << "write fail : topic";
             }
 
             pthread_create(&m_pid, NULL, PubSubImpl::thread_run, this);            
@@ -75,31 +76,31 @@ class PubSubImpl
         void publish(std::string topic, void* buf , int32_t len)
         {
             int ret, w_len;
-            common_msg_t msg;
+            emb_msg_t msg;
 
-            printf("[PUBSUB]publish: %s, %d \n", (char*)buf, len);
-
-            msg.head_sign = COMMON_MSG_HEAD_SIGN;
-            msg.length  = topic.size() + 1 + len;
-            strncpy(msg.command, COMMON_MSG_COMMAND_PUBLISH_REQ, sizeof(msg.command));
+            msg.head_sign = EMB_MSG_HEAD_SIGN;
+            msg.topic_len  = topic.size() + 1;
+            msg.data_len  = len;
+            strncpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
             
             w_len = sizeof(msg);
             ret = write(m_fd, &msg, w_len);
             if(ret != w_len) {
-                perror("write fail");
+                LOGE << "write fail : msg";
             }
 
             /* write topic */
-            w_len = topic.size() + 1;
+            w_len = msg.topic_len;
             ret = write(m_fd, topic.c_str(), w_len);
             if(ret != w_len) {
-                perror("write fail");
+                LOGE << "write fail : topic"; 
             }
 
-            /* write message */
-            ret = write(m_fd, buf, len);
-            if(ret != len) {
-                perror("write fail");
+            /* write data */
+            w_len = msg.data_len;
+            ret = write(m_fd, buf, w_len);
+            if(ret != w_len) {
+                LOGE << "write fail : data";
             }
 
         }
@@ -140,18 +141,28 @@ class PubSubImpl
                         int len = read(fd[0].fd, buf, sizeof buf);
                         if (len > 0) 
                         {
-                            common_msg_t*  p_msg = (common_msg_t*)buf;
-                            uint8_t*       p_body = (uint8_t*)(p_msg + 1);
+                            emb_msg_t*  p_msg = (emb_msg_t*)buf;
+                            uint8_t*    p_body = (uint8_t*)(p_msg + 1);
                             
-                            if( p_msg->head_sign != COMMON_MSG_HEAD_SIGN) {
-                                perror("msg header destoyed");
-                            }
 
-                            printf("[PUBSUB] event_read : %c%c%c%c \n", p_msg->command[0], p_msg->command[1], p_msg->command[2], p_msg->command[3]);
+                            if( p_msg->head_sign != EMB_MSG_HEAD_SIGN) {
+                                    LOGE << "msg header destoyed";
+                                }
 
-                            if( 0 == strncmp(p_msg->command, COMMON_MSG_COMMAND_PUBLISH_NTY, sizeof(p_msg->command)) ) {
+                            uint32_t    topic_len = p_msg->topic_len;
+                            uint32_t    data_len  = p_msg->data_len;
+
+                            char str[5];
+                            bzero(str, sizeof str);
+                            strncpy(str, p_msg->command, sizeof(p_msg->command)); 
+
+                            std::string command(str);
+
+                            if( command == EMB_MSG_COMMAND_PUBLISH ) {
                                 std::string topic = (char*)p_body;
-                                m_handler->handleMessage(topic, p_body + topic.size() + 1 , p_msg->length);
+                                char* data = (char*)p_body + topic_len;
+                                LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
+                                m_handler->handleMessage(topic, data, p_msg->data_len);
                             }
 
                         }

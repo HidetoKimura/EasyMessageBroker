@@ -5,7 +5,7 @@
 
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <poll.h>
+#include <sys/epoll.h>
 #include <pthread.h>
 
 #include <vector>
@@ -13,7 +13,8 @@
 #include <memory>
 #include <algorithm>
 
-#include "common_msg.h"
+#include "emb_msg.h"
+#include "emb_log.h"
 
 using namespace std;
 
@@ -45,14 +46,11 @@ class BrokerImpl
             int ret = bind(m_serverFd, (struct sockaddr*)&addr, sizeof addr);
             if (ret < 0)
             {
-                perror("bind error:");
+                LOGE << "bind error:";
                 return ;
             }
 
             listen(m_serverFd, 64);
-
-            // start thread to listen
-            pthread_create(&m_pid, NULL, BrokerImpl::thread_run, this);
         }
 
         ~BrokerImpl()
@@ -71,17 +69,18 @@ class BrokerImpl
 
         void event_publish(std::string topic, void *buf, int32_t len)
         {
-            printf("[BROKER] event_publish: %s, %d \n", (char*)buf, len);
+            LOGD << (char*)buf;
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++)
             {
                 int ret, w_len;
-                common_msg_t msg;
+                emb_msg_t msg;
 
                 if((*it).topic != topic) continue;
 
-                msg.head_sign = COMMON_MSG_HEAD_SIGN;
-                msg.length  = (*it).topic.size() + 1 + len;
-                strncpy(msg.command, COMMON_MSG_COMMAND_PUBLISH_NTY, sizeof(msg.command));
+                msg.head_sign = EMB_MSG_HEAD_SIGN;
+                msg.topic_len = (*it).topic.size() + 1;
+                msg.data_len  = len;
+                strncpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
  
                 w_len = sizeof(msg);
                 ret = write((*it).fd, &msg, w_len);
@@ -105,105 +104,103 @@ class BrokerImpl
             }
         }
 
-        void event_loop()
+        void read_event(int fd) 
         {
-            while(true) 
+            char buf[512];
+            bzero(buf, sizeof buf);
+            int ret = read(fd, buf, sizeof buf);
+            if( ret > 0 ) {
+
+                emb_msg_t*  p_msg =  (emb_msg_t*)buf;
+                uint8_t*    p_body = (uint8_t*)(p_msg + 1);
+
+                if( p_msg->head_sign != EMB_MSG_HEAD_SIGN) {
+                    LOGE << "msg header destoyed";
+                }
+
+                uint32_t    topic_len = p_msg->topic_len;
+                uint32_t    data_len = p_msg->data_len;
+
+                char str[5];
+                bzero(str, sizeof str);
+                strncpy(str, p_msg->command, sizeof(p_msg->command)); 
+
+                std::string command(str);
+
+                if (command == EMB_MSG_COMMAND_SUBSCRIBE) {
+                    std::string topic = (char*)p_body;
+                    LOGI << "event =" << command << ", topic =" << topic;
+
+                    subscriber_item_t item;
+                    item.topic = topic;
+                    item.fd = fd;                                ;
+                    m_subscribers.push_back(item);
+                }
+                else if (command == EMB_MSG_COMMAND_PUBLISH) {
+                    std::string topic = (char*)p_body;
+                    char* data = (char*)p_body + topic_len;
+                    LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
+                    event_publish(topic, data, p_msg->data_len);
+                }
+
+            }
+            else if (ret == 0) 
             {
-                sleep(10);
+                LOGI << "socket fd = " << fd << "disconnect."; 
+                m_clients.erase(std::remove(m_clients.begin(), m_clients.end(), fd), m_clients.end());
+                close(fd);
             }
         }
 
-        static void* thread_run(void* args)
+        void event_loop()
         {
-            BrokerImpl* m_impl = (BrokerImpl*)args;
-            m_impl->run();
+            #define MAX_EVENTS 10
+           struct epoll_event ev, events[MAX_EVENTS];
+           int conn_sock, nfds, epollfd;
 
-            return NULL;
-        }
+            if ((epollfd = epoll_create1(0)) == -1) {
+                LOGE << "epoll_create";
+                return;
+            }
+            ev.data.fd = m_serverFd;
+            ev.events = EPOLLIN;
 
-        void run()
-        {
-            printf("[BROKER]thread running....\n");
+            if (epoll_ctl(epollfd, EPOLL_CTL_ADD, m_serverFd, &ev) == -1) {
+                LOGE << "epoll_ctl::EPOLL_CTL_ADD m_serverFd ";
+                (void) close(epollfd);
+                return;
+            }
+
             while (m_running)
             {
-                struct pollfd *fd;
-                int count = m_clients.size() + 1;
-                fd = (struct pollfd*)malloc(sizeof(struct pollfd) * count);
-                bzero(fd, sizeof(struct pollfd) * count);
-
-                fd[0].fd = m_serverFd;
-                fd[0].events = POLLIN;
-
-                // TODO: lock m_clients?
-                for (int i = 1; i < count; i++)
-                {
-                    fd[i].fd = m_clients[i-1];
-                    fd[i].events = POLLIN;
+                nfds = epoll_wait(epollfd, events, MAX_EVENTS, -1);
+                if (nfds == -1) {
+                    LOGE << "epoll_wait";
+                    break;
                 }
 
-                int ret = poll(fd, count, 500);
-                if (ret > 0)
-                {
-                    printf("[BROKER]fd[0].revnts %d, pollin is %d\n", fd[0].revents, POLLIN);
-                    if (fd[0].revents & POLLIN)
-                    {
-                        // connection come
-                        sockaddr_un cli_addr;
-                        socklen_t len = 0;
-                        printf("[BROKER]start to accept...\n");
-                        int fd = accept(m_serverFd, (struct sockaddr*)&cli_addr, &len);
-                        printf("[BROKER]accpet result is %d \n", fd);
-                        if (fd == -1)
-                        {
-                            perror("accpet connection failed:");
+                for (int n = 0; n < nfds; n++) {
+                    if (events[n].data.fd == m_serverFd) {
+                        sockaddr_un addr;
+                        socklen_t addrlen = 0;
+                        conn_sock = accept(m_serverFd,
+                                            (struct sockaddr *) &addr, &addrlen);
+                        if (conn_sock == -1) {
+                            LOGE << "accept";
                             continue;
                         }
-
-                        m_clients.push_back(fd);
-                        printf("[BROKER]connection ok with fd : %d \n", fd);
-                    }
-
-                    for (int i = 1; i < count; i++)
-                    {
-                        if (fd[i].revents & POLLIN)
-                        {
-                            // socket event...
-                            char buf[512];
-                            bzero(buf, sizeof buf);
-                            int ret = read(m_clients[i-1], buf, sizeof buf);
-                            if( ret > 0 ) {
-
-                                common_msg_t*  p_msg = (common_msg_t*)buf;
-                                uint8_t*       p_body = (uint8_t*)(p_msg + 1);
-
-                                if( p_msg->head_sign != COMMON_MSG_HEAD_SIGN) {
-                                    perror("msg header destoyed");
-                                }
-                                printf("[BROKER] event_read : %c%c%c%c \n", p_msg->command[0], p_msg->command[1], p_msg->command[2], p_msg->command[3]);
-
-                                if( 0 == strncmp(p_msg->command, COMMON_MSG_COMMAND_PUBLISH_REQ, sizeof(p_msg->command)) ) {
-                                    std::string topic = (char*)p_body;
-                                    printf("topic = %s \n", topic.c_str());
-                                    event_publish(topic, p_body + topic.size() + 1, p_msg->length);
-                                }
-                                if( 0 == strncmp(p_msg->command, COMMON_MSG_COMMAND_SUBSCRIBE_REQ, sizeof(p_msg->command)) ) {
-                                    std::string topic = (char*)p_body;
-                                    printf("topic = %s \n", topic.c_str());
-                                    subscriber_item_t item;
-                                    item.topic = topic;
-                                    item.fd = m_clients[i-1];
-                                    m_subscribers.push_back(item);
-                                }
-                            }
-                            else if (ret == 0) 
-                            {
-                                printf("[BROKER]socket %d disconnect.\n", fd[i].fd);
-                                m_clients.erase(std::remove(m_clients.begin(), m_clients.end(), fd[i].fd), m_clients.end());
-                                close(fd[i].fd);
-                            }
+                        ev.events = EPOLLIN | EPOLLET;
+                        ev.data.fd = conn_sock;
+                        if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) == -1) {
+                            LOGE << "epoll_ctl: conn_sock";
+                            continue;
                         }
-                    }
-                }
+                        m_clients.push_back(conn_sock);
+
+                   } else {
+                       read_event(events[n].data.fd);
+                   }
+               }
             }
         }
 
