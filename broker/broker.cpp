@@ -63,6 +63,8 @@ class BrokerImpl
                 char* data = (char*)p_body + msg->topic_len;
                 LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
                 event_publish(topic, data, msg->data_len);
+                dump_subcribes();
+
             };
             m_command_list.push_back(command_item);
 
@@ -81,6 +83,7 @@ class BrokerImpl
                 m_subscribers.push_back(item);
 
                 event_suback(fd, topic, item.client_id);
+                dump_subcribes();
             };
             m_command_list.push_back(command_item);
 
@@ -110,6 +113,8 @@ class BrokerImpl
                 }
 
                 event_unsuback(fd, topic, client_id_ul);
+
+                dump_subcribes();
             };
 
             m_command_list.push_back(command_item);
@@ -123,12 +128,16 @@ class BrokerImpl
                 int  conn_sock;
                 sockaddr_un addr;
                 socklen_t addrlen = 0;
+                LOGD << "listen...";
+
                 conn_sock = accept(m_serverFd,
                                     (struct sockaddr *) &addr, &addrlen);
                 if (conn_sock == -1) {
                     LOGE << "accept";
                     return;
                 }
+
+                LOGD << "accept" << ", fd=" << conn_sock ;
 
                 EventLoopItem conn_item;
                 conn_item.fd = conn_sock;
@@ -190,6 +199,13 @@ class BrokerImpl
             }
 
         }
+        void dump_subcribes ()
+        {
+            for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
+                LOGD << (*it).client_id << ", " << (*it).topic << ", " << (*it).fd;          
+            }
+
+        }
 
         void event_unsuback(int fd, std::string topic, uint32_t client_id)
         {
@@ -198,19 +214,12 @@ class BrokerImpl
             std::string client_id_str = std::to_string(client_id);
 
             msg.head_sign = EMB_MSG_HEAD_SIGN;
-            msg.topic_len = topic.size() + 1;
+            msg.topic_len = 0;
             msg.data_len  = client_id_str.size() + 1;
             memcpy(msg.command, EMB_MSG_COMMAND_UNSUBACK, sizeof(msg.command));
 
             w_len = sizeof(msg);
             ret = write(fd, &msg, w_len);
-            if(ret != w_len) {
-                perror("write fail");
-            }
-
-            /* write topic */
-            w_len = msg.topic_len;
-            ret = write(fd, topic.c_str(), w_len);
             if(ret != w_len) {
                 perror("write fail");
             }
@@ -231,12 +240,14 @@ class BrokerImpl
                 int ret, w_len;
                 emb_msg_t msg;
 
+                LOGD << "broker_topic=" << (*it).topic << " request_topic=" << topic ;
+
                 if((*it).topic != topic) continue;
 
                 msg.head_sign = EMB_MSG_HEAD_SIGN;
                 msg.topic_len = (*it).topic.size() + 1;
                 msg.data_len  = len;
-                strncpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
+                memcpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
  
                 w_len = sizeof(msg);
                 ret = write((*it).fd, &msg, w_len);
@@ -264,6 +275,9 @@ class BrokerImpl
         {
             char buf[512];
             bzero(buf, sizeof buf);
+            
+            LOGD << "read_event fd=" << fd;
+
             int ret = read(fd, buf, sizeof buf);
             if( ret > 0 ) {
                 emb_msg_t*  p_msg = (emb_msg_t*)buf;
@@ -274,7 +288,7 @@ class BrokerImpl
 
                 char str[5];
                 bzero(str, sizeof str);
-                strncpy(str, p_msg->command, sizeof(p_msg->command)); 
+                memcpy(str, p_msg->command, sizeof(p_msg->command)); 
                 std::string command(str);
 
                 for(auto it = m_command_list.begin(); it != m_command_list.end() ; it++) 
@@ -299,9 +313,9 @@ class BrokerImpl
             }
         }
 
-        void event_loop()
+        void event_loop(int count)
         {
-            m_loop->run();
+            m_loop->run(count);
         }
 
     private:
@@ -323,9 +337,9 @@ Broker::~Broker()
 {
 }
 
-void Broker::event_loop(void)
+void Broker::event_loop(int count)
 {
-    m_impl->event_loop();
+    m_impl->event_loop(count);
 }
 
 

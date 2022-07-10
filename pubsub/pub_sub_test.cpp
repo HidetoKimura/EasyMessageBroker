@@ -37,8 +37,9 @@ int main(int argc, char *argv[])
     }
     else if (argc == 3 && 0 == strcmp(argv[1], "sub")) {
         std::string topic = argv[2];
-        pubsub->subscribe(topic, handler);
-        pubsub->event_loop();
+        auto id = pubsub->subscribe(topic, handler);
+        pubsub->event_loop(1);
+        pubsub->unsubscribe(id);
     }
     else {
         usage();

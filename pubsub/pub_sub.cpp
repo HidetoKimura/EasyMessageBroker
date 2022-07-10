@@ -28,6 +28,7 @@ class PubSubImpl
     public:
         PubSubImpl(std::string broker_id)
             : m_fd(-1)
+            , m_last_client_id(EMB_ID_NOT_USE)
             , m_subscribers()
         {
             m_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -54,7 +55,7 @@ class PubSubImpl
                 std::string topic = p_body;
                 char* data = (char*)p_body + msg->topic_len;
                 LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
-                for(auto it = m_subscribers.begin(); it > m_subscribers.end(); it++ ) {
+                for(auto it = m_subscribers.begin(); it != m_subscribers.end(); it++ ) {
                     if((*it).topic == topic ) {
                         (*it).handler->handleMessage(topic, data, msg->data_len);
                     }
@@ -70,15 +71,41 @@ class PubSubImpl
                 std::string topic = p_body;
                 char* data = (char*)p_body + msg->topic_len;
                 std::string client_id = data;
+                const char* p = client_id.c_str();
+                char* end;
+                emb_id_t client_id_ul = strtoul(p, &end, 10);
+
+                LOGI << "event =" << command << ", topic =" << topic << ", clinet_id =" << client_id_ul;
+
+                m_last_client_id = client_id_ul;
+         
+            };
+            m_command_list.push_back(command_item);
+
+            command_item.command = EMB_MSG_COMMAND_UNSUBACK;
+            command_item.handler = [this](int fd, std::string command, void* head) -> void
+            {
+                emb_msg_t* msg = (emb_msg_t*)head;
+                char* p_body = (char*)msg + sizeof(emb_msg_t);
+                std::string topic = p_body;
+                char* data = (char*)p_body + msg->topic_len;
+                std::string client_id = data;
                 LOGI << "event =" << command << ", topic =" << topic << ", clinet_id =" << client_id;
-                for(auto it = m_subscribers.begin(); it > m_subscribers.end(); it++ ) {
-                    if((*it).client_id == EMB_ID_NOT_USE ) {
-                        const char* p = client_id.c_str();
-                        char* end;
-                        (*it).client_id = strtoul(p, &end, 10);
-                        break;
+
+                const char* p = client_id.c_str();
+                char* end;
+                emb_id_t client_id_ul = strtoul(p, &end, 10);
+
+                for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
+                {
+                    if((*it).client_id == client_id_ul) {
+                        it = m_subscribers.erase(it);
+                    }
+                    else {
+                        it++;
                     }
                 }
+
             };
             m_command_list.push_back(command_item);
 
@@ -107,16 +134,9 @@ class PubSubImpl
             int ret, w_len;
             emb_msg_t msg;
 
-            SubscriberItemClient item;
-            item.topic = topic;
-            item.handler = handler;
-            item.client_id = EMB_ID_NOT_USE;
-            m_subscribers.push_back(item);
-            auto it = m_subscribers.end();
-
             msg.head_sign = EMB_MSG_HEAD_SIGN;
             msg.topic_len  = topic.size() + 1;
-            strncpy(msg.command, EMB_MSG_COMMAND_SUBSCRIBE, sizeof(msg.command));
+            memcpy(msg.command, EMB_MSG_COMMAND_SUBSCRIBE, sizeof(msg.command));
             
             w_len = sizeof(msg);
             ret = write(m_fd, &msg, w_len);
@@ -133,12 +153,66 @@ class PubSubImpl
 
             read_event(m_fd);
 
-            return ((*it).client_id);
+
+            SubscriberItemClient item;
+            item.topic = topic;
+            item.handler = handler;
+            item.client_id = m_last_client_id;
+            m_subscribers.push_back(item);
+
+            m_last_client_id = EMB_ID_NOT_USE;
+
+            dump_subcribes();
+
+            return (item.client_id);
         }
         void unsubscribe(emb_id_t client_id)
         {
+            int ret, w_len;
+            emb_msg_t msg;
+            std::string client_id_str = std::to_string(client_id);
+
+            msg.head_sign = EMB_MSG_HEAD_SIGN;
+            msg.topic_len = 0;
+            msg.data_len  = client_id_str.size() + 1;
+            memcpy(msg.command, EMB_MSG_COMMAND_UNSUBSCRIBE, sizeof(msg.command));
+
+            w_len = sizeof(msg);
+            ret = write(m_fd, &msg, w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+            /* write message */
+            w_len = msg.data_len;
+            ret = write(m_fd, client_id_str.c_str(), w_len);
+            if(ret != w_len) {
+                perror("write fail");
+            }
+
+            read_event(m_fd);
+
+            for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
+            {
+                if((*it).client_id == client_id) {
+                    it = m_subscribers.erase(it);
+                }
+                else {
+                    it++;
+                }
+            }
+            dump_subcribes();
 
         }
+
+        void dump_subcribes ()
+        {
+            for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
+                LOGD << (*it).client_id << ", " << (*it).topic << ", " << (*it).handler;          
+            }
+
+        }
+
 
         void publish(std::string topic, void* buf , int32_t len)
         {
@@ -148,7 +222,7 @@ class PubSubImpl
             msg.head_sign = EMB_MSG_HEAD_SIGN;
             msg.topic_len  = topic.size() + 1;
             msg.data_len  = len;
-            strncpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
+            memcpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
             
             w_len = sizeof(msg);
             ret = write(m_fd, &msg, w_len);
@@ -187,7 +261,7 @@ class PubSubImpl
 
                 char str[5];
                 bzero(str, sizeof str);
-                strncpy(str, p_msg->command, sizeof(p_msg->command)); 
+                memcpy(str, p_msg->command, sizeof(p_msg->command)); 
                 std::string command(str);
 
                 for(auto it = m_command_list.begin(); it != m_command_list.end() ; it++) 
@@ -211,13 +285,14 @@ class PubSubImpl
             }
         }
 
-        void event_loop() 
+        void event_loop(int count) 
         {
-            m_loop->run();
+            m_loop->run(count);
         }
 
     private:
         int m_fd;
+        emb_id_t    m_last_client_id;
         std::unique_ptr<EventLoop> m_loop;
         std::vector<SubscriberItemClient> m_subscribers;
         std::vector<EmbCommandItem>   m_command_list;
@@ -247,7 +322,7 @@ void PubSub::publish(std::string topic, void* buf , int32_t len)
     m_impl->publish(topic, buf, len);
 }
 
-void PubSub::event_loop(void)
+void PubSub::event_loop(int count)
 {
-    m_impl->event_loop();
+    m_impl->event_loop(count);
 }

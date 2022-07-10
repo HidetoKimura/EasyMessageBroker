@@ -30,7 +30,7 @@ class PubSub
         void unsubscribe(emb_id_t client_id);
         void publish(std::string topic, void* buf , int32_t len);
 
-        void event_loop();
+        void event_loop(int count);
 
     private:
         std::unique_ptr<PubSubImpl> m_impl;

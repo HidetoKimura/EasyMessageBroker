@@ -62,14 +62,14 @@ void EventLoop::del_item(int fd) {
 
 }
  
-void EventLoop::run()
+void EventLoop::run(int count)
 {
     #define MAX_EVENTS 10
     struct epoll_event events[MAX_EVENTS];
     int nfds;
+    bool flg = true;
 
-    while (m_running)
-    {
+    do {
         nfds = epoll_wait(m_epoll_fd, events, MAX_EVENTS, -1);
         if (nfds == -1) {
             LOGE << "epoll_wait";
@@ -85,6 +85,13 @@ void EventLoop::run()
             }
 
         }
-    }
+        
+        if(count == 0) {
+            flg = false;
+        }
+        else if(count > 0) {
+            count--;
+        }
+    } while (flg);
 }
 
