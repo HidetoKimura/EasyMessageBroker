@@ -131,18 +131,12 @@ class BrokerImpl
             loop_item.dispatch = [this](int fd) -> void
             {
                 int  conn_sock;
-                sockaddr_un addr;
-                socklen_t addrlen = 0;
-                LOGD << "listen...";
 
-                conn_sock = accept(m_serverFd,
-                                    (struct sockaddr *) &addr, &addrlen);
-                if (conn_sock == -1) {
-                    LOGE << "accept";
+                conn_sock = m_sock->accept();
+                if (conn_sock < 0) {
+                    LOGE << "accept failed:";
                     return;
                 }
-
-                LOGD << "accept" << ", fd=" << conn_sock ;
 
                 EventLoopItem conn_item;
                 conn_item.fd = conn_sock;
