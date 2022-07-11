@@ -16,7 +16,7 @@ INCLUDE_DIRECTORIES("util")
 ADD_LIBRARY(event_util ${UTIL_LIST})
 
 ADD_EXECUTABLE(broker  ${BROKER_LIST})
-TARGET_LINK_LIBRARIES(broker event_util)
+TARGET_LINK_LIBRARIES(broker ez_stream)
 
 ADD_EXECUTABLE(pubsub  ${PUBSUB_LIST})
-TARGET_LINK_LIBRARIES(pubsub event_util)
+TARGET_LINK_LIBRARIES(pubsub ez_stream)

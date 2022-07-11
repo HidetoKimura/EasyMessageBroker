@@ -1,83 +1,83 @@
 #pragma once
 
-#ifdef DISABLE_EZLOG
+#ifdef DISABLE_EZ_LOG
 
-#define LOGI ::ezlog::log_null()
-#define LOGD ::ezlog::log_null()
-#define LOGW ::ezlog::log_null()
-#define LOGE ::ezlog::log_null()
+#define LOGI ::ez::log::log_null()
+#define LOGD ::ez::log::log_null()
+#define LOGW ::ez::log::log_null()
+#define LOGE ::ez::log::log_null()
 
 #else
 
-#ifndef EZLOG_GET_FILE
-  #define EZLOG_GET_FILE __FILE__
+#ifndef EZ_LOG_GET_FILE
+  #define EZ_LOG_GET_FILE __FILE__
 #endif
 
-#ifndef EZLOG_GET_LINE
-  #define EZLOG_GET_LINE __LINE__
+#ifndef EZ_LOG_GET_LINE
+  #define EZ_LOG_GET_LINE __LINE__
 #endif
 
-#ifndef EZLOG_GET_FUNCTION
-  #define EZLOG_GET_FUNCTION __PRETTY_FUNCTION__
+#ifndef EZ_LOG_GET_FUNCTION
+  #define EZ_LOG_GET_FUNCTION __PRETTY_FUNCTION__
 #endif
 
-#ifndef EZLOG_INFO_PREFIX
-  #define EZLOG_INFO_PREFIX  " [ info  ]\t"
+#ifndef EZ_LOG_INFO_PREFIX
+  #define EZ_LOG_INFO_PREFIX  " [ info  ]\t"
 #endif
 
-#ifndef EZLOG_DEBUG_PREFIX
-  #define EZLOG_DEBUG_PREFIX " [ debug ]\t"
+#ifndef EZ_LOG_DEBUG_PREFIX
+  #define EZ_LOG_DEBUG_PREFIX " [ debug ]\t"
 #endif
 
-#ifndef EZLOG_WARN_PREFIX
-  #define EZLOG_WARN_PREFIX  " [ warn  ]\t"
+#ifndef EZ_LOG_WARN_PREFIX
+  #define EZ_LOG_WARN_PREFIX  " [ warn  ]\t"
 #endif
 
-#ifndef EZLOG_ERROR_PREFIX
-  #define EZLOG_ERROR_PREFIX " [ error ]\t"
+#ifndef EZ_LOG_ERROR_PREFIX
+  #define EZ_LOG_ERROR_PREFIX " [ error ]\t"
 #endif
 
 
-#define LOGI ::ezlog::log_intermediate::make_log \
-  ( EZLOG_GET_FILE \
-  , EZLOG_GET_LINE \
-  , EZLOG_GET_FUNCTION \
-  ) << EZLOG_INFO_PREFIX
-#define LOGD ::ezlog::log_intermediate::make_log\
-  ( EZLOG_GET_FILE \
-  , EZLOG_GET_LINE \
-  , EZLOG_GET_FUNCTION \
-  ) << EZLOG_DEBUG_PREFIX
-#define LOGW ::ezlog::log_intermediate::make_log \
-  ( EZLOG_GET_FILE \
-  , EZLOG_GET_LINE \
-  , EZLOG_GET_FUNCTION \
-  ) << EZLOG_WARN_PREFIX
-#define LOGE ::ezlog::log_intermediate::make_log \
-  ( EZLOG_GET_FILE \
-  , EZLOG_GET_LINE \
-  , EZLOG_GET_FUNCTION \
-  ) << EZLOG_ERROR_PREFIX
+#define LOGI ::ez::log::log_intermediate::make_log \
+  ( EZ_LOG_GET_FILE \
+  , EZ_LOG_GET_LINE \
+  , EZ_LOG_GET_FUNCTION \
+  ) << EZ_LOG_INFO_PREFIX
+#define LOGD ::ez::log::log_intermediate::make_log\
+  ( EZ_LOG_GET_FILE \
+  , EZ_LOG_GET_LINE \
+  , EZ_LOG_GET_FUNCTION \
+  ) << EZ_LOG_DEBUG_PREFIX
+#define LOGW ::ez::log::log_intermediate::make_log \
+  ( EZ_LOG_GET_FILE \
+  , EZ_LOG_GET_LINE \
+  , EZ_LOG_GET_FUNCTION \
+  ) << EZ_LOG_WARN_PREFIX
+#define LOGE ::ez::log::log_intermediate::make_log \
+  ( EZ_LOG_GET_FILE \
+  , EZ_LOG_GET_LINE \
+  , EZ_LOG_GET_FUNCTION \
+  ) << EZ_LOG_ERROR_PREFIX
 
 #endif
 
-#ifndef EZLOG_OUT
-  #define EZLOG_OUT ::std::cout
+#ifndef EZ_LOG_OUT
+  #define EZ_LOG_OUT ::std::cout
 #endif
 
-#ifndef EZLOG_FLUSH
-  #define EZLOG_FLUSH ::std::flush
+#ifndef EZ_LOG_FLUSH
+  #define EZ_LOG_FLUSH ::std::flush
 #endif
 
 #include <string>
 #include <iostream>
 #include <iomanip>
 
-namespace ezlog
+namespace ez::log
 {
   using namespace std;
 
-#ifdef DISABLE_EZLOG
+#ifdef DISABLE_EZ_LOG
   
   struct log_null
   {
@@ -131,7 +131,7 @@ namespace ezlog
           << source << ':' << line << '\t' << function
           << endl
           ;
-        EZLOG_OUT << s.str() << EZLOG_FLUSH;
+        EZ_LOG_OUT << s.str() << EZ_LOG_FLUSH;
       }
       catch ( const exception& e )
       { cerr << "\n\n<<<<<\nexception on " << __PRETTY_FUNCTION__ << "\nwhat=" << e.what() << "\n>>>>>\n\n"; }

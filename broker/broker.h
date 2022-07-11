@@ -16,7 +16,10 @@ class Broker
         Broker(std::string broker_id);
         ~Broker();
 
-        void event_loop(int count);
+        int32_t listen(void);
+
+        void dispatch(int fd);
+        int  get_fd(void);
 
     private:
         std::unique_ptr<BrokerImpl> m_impl;

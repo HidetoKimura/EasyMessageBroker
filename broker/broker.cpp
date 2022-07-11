@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/epoll.h>
 #include <pthread.h>
@@ -13,9 +12,10 @@
 #include <memory>
 #include <algorithm>
 
+#include "ez_stream.h"
+#include "ez_log.h"
+
 #include "emb_msg.h"
-#include "event_util.h"
-#include "ezlog.h"
 
 using namespace std;
 
@@ -33,25 +33,32 @@ class BrokerImpl
           , m_clients()
           , m_subscribers()
           , m_running(true)
-          , m_broker_id(broker_id)
         {
-            m_serverFd = socket(AF_UNIX, SOCK_STREAM, 0);
-            sockaddr_un addr;
-            bzero(&addr, sizeof addr);
-            addr.sun_family = AF_UNIX;
-            strcpy(addr.sun_path, m_broker_id.c_str());
+            m_loop = std::make_unique<EventLoop>();
+            m_sock = std::make_unique<SocketStream>(broker_id);
+        }
 
-            // delete file that going to bind
-            unlink(m_broker_id.c_str());
+        ~BrokerImpl()
+        {
+            m_running = false;
 
-            int ret = bind(m_serverFd, (struct sockaddr*)&addr, sizeof addr);
-            if (ret < 0)
+            for (auto it = m_clients.begin(); it != m_clients.end(); it++)
             {
-                LOGE << "bind error:";
-                return ;
+                close(*it);
+            }
+        }
+
+        int32_t listen(void)
+        {
+            int32_t ret;
+
+            ret = m_sock->listen();
+            if(ret < 0) 
+            {
+                LOGE << "listen failed: "; 
             }
 
-            listen(m_serverFd, 64);
+            m_serverFd = m_sock->get_fd();
 
             EmbCommandItem command_item;
             command_item.command = EMB_MSG_COMMAND_PUBLISH;
@@ -119,8 +126,6 @@ class BrokerImpl
 
             m_command_list.push_back(command_item);
 
-            m_loop = std::make_unique<EventLoop>();
-
             EventLoopItem loop_item;
             loop_item.fd = m_serverFd;
             loop_item.dispatch = [this](int fd) -> void
@@ -154,18 +159,8 @@ class BrokerImpl
 
         }
 
-        ~BrokerImpl()
-        {
-            m_running = false;
-            close(m_serverFd);
 
-            unlink(m_broker_id.c_str());
 
-            for (auto it = m_clients.begin(); it != m_clients.end(); it++)
-            {
-                close(*it);
-            }
-        }
 
         void event_suback(int fd, std::string topic, uint32_t client_id)
         {
@@ -320,10 +315,11 @@ class BrokerImpl
 
     private:
         int m_serverFd;
-        std::vector<int> m_clients;
-        std::unique_ptr<EventLoop> m_loop;
-        std::vector<EmbCommandItem>   m_command_list;
-        std::list<SuscribeItemBroker> m_subscribers;
+        std::vector<int>                m_clients;
+        std::unique_ptr<EventLoop>      m_loop;
+        std::unique_ptr<SocketStream>   m_sock;
+        std::vector<EmbCommandItem>     m_command_list;
+        std::list<SuscribeItemBroker>   m_subscribers;
         bool        m_running;
         std::string m_broker_id;
 };
@@ -337,9 +333,5 @@ Broker::~Broker()
 {
 }
 
-void Broker::event_loop(int count)
-{
-    m_impl->event_loop(count);
-}
 
 

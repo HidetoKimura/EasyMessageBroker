@@ -12,8 +12,8 @@
 #include "emb_msg.h"
 #include "pub_sub.h"
 
-#include "ezlog.h"
-#include "event_util.h"
+#include "ez_log.h"
+#include "ez_stream.h"
 
 using namespace std;
 
@@ -31,20 +31,6 @@ class PubSubImpl
             , m_last_client_id(EMB_ID_NOT_USE)
             , m_subscribers()
         {
-            m_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-
-            struct sockaddr_un addr;
-            bzero(&addr, sizeof addr);
-
-            addr.sun_family = AF_UNIX;
-            strcpy(addr.sun_path, broker_id.c_str());
-
-            int ret = connect(m_fd, (struct sockaddr*)&addr, sizeof addr);
-            if (ret < 0)
-            {
-                LOGE << "sub sonnect failed : ";
-                return;
-            }
             
             EmbCommandItem command_item;
             command_item.command = EMB_MSG_COMMAND_PUBLISH;

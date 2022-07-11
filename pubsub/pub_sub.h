@@ -7,8 +7,8 @@
 #include <string>
 #include <memory>
 
+#include "ez_stream.h"
 #include "emb_msg.h"
-#include "ezlog.h"
 
 using namespace std;
 
@@ -20,17 +20,20 @@ class SubscribeHandler
         virtual void handleMessage(std::string topic, void *buf, int32_t len) = 0;
 };
 
-class PubSub
+class PubSub : public EventLoop, public SocketStream
 {
     public:
         PubSub(std::string broker_id);
         ~PubSub();
 
+        int32_t dial(void);
+
         emb_id_t subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler);
         void unsubscribe(emb_id_t client_id);
         void publish(std::string topic, void* buf , int32_t len);
 
-        void event_loop(int count);
+        void dispatch(int fd);
+        int  get_fd(void);
 
     private:
         std::unique_ptr<PubSubImpl> m_impl;
