@@ -6,8 +6,6 @@
 
 using DispatchHandler = std::function<void(int fd)>;
 
-#define EVENT_LOOP_FOREVER -1
-
 struct EventLoopItem 
 {
     int             fd;
@@ -35,18 +33,15 @@ class SocketStream
         SocketStream(std::string addr);
         ~SocketStream();
         
-        int32_t listen();
-        int32_t dial();
+        int listen();
+        int accept(int listen_fd);
+        int connect();
     
-        int32_t read(void* buf, int32_t len);
-        int32_t write(void* buf, int32_t len);
-
-        int get_fd(void);
+        int32_t read(int fd, void* buf, int32_t size);
+        int32_t write(int fd, void* buf, int32_t size);
 
     private:
         std::string m_addr;
-	    int  m_fd;
-        bool m_running;
 };
 
 

@@ -18,6 +18,8 @@ class Broker
 
         int32_t listen(void);
 
+        void event_loop(void);
+
         void dispatch(int fd);
         int  get_fd(void);
 

@@ -20,20 +20,22 @@ class SubscribeHandler
         virtual void handleMessage(std::string topic, void *buf, int32_t len) = 0;
 };
 
-class PubSub : public EventLoop, public SocketStream
+class PubSub 
 {
     public:
         PubSub(std::string broker_id);
         ~PubSub();
 
-        int32_t dial(void);
+        int32_t connect(void);
 
-        emb_id_t subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler);
+        emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler);
         void unsubscribe(emb_id_t client_id);
         void publish(std::string topic, void* buf , int32_t len);
 
-        void dispatch(int fd);
-        int  get_fd(void);
+        void event_loop(void);
+
+        void add_loop_item(EventLoopItem &item);
+        void del_loop_item(int fd); 
 
     private:
         std::unique_ptr<PubSubImpl> m_impl;

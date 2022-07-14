@@ -31,80 +31,9 @@ class PubSubImpl
             , m_last_client_id(EMB_ID_NOT_USE)
             , m_subscribers()
         {
-            
-            EmbCommandItem command_item;
-            command_item.command = EMB_MSG_COMMAND_PUBLISH;
-            command_item.handler = [this](int fd, std::string command, void* head) -> void
-            {
-                emb_msg_t* msg = (emb_msg_t*)head;
-                char* p_body = (char*)msg + sizeof(emb_msg_t);
-                std::string topic = p_body;
-                char* data = (char*)p_body + msg->topic_len;
-                LOGI << "event =" << command << ", topic =" << topic << ", data =" << data;
-                for(auto it = m_subscribers.begin(); it != m_subscribers.end(); it++ ) {
-                    if((*it).topic == topic ) {
-                        (*it).handler->handleMessage(topic, data, msg->data_len);
-                    }
-                }
-            };
-            m_command_list.push_back(command_item);
-
-            command_item.command = EMB_MSG_COMMAND_SUBACK;
-            command_item.handler = [this](int fd, std::string command, void* head) -> void
-            {
-                emb_msg_t* msg = (emb_msg_t*)head;
-                char* p_body = (char*)msg + sizeof(emb_msg_t);
-                std::string topic = p_body;
-                char* data = (char*)p_body + msg->topic_len;
-                std::string client_id = data;
-                const char* p = client_id.c_str();
-                char* end;
-                emb_id_t client_id_ul = strtoul(p, &end, 10);
-
-                LOGI << "event =" << command << ", topic =" << topic << ", clinet_id =" << client_id_ul;
-
-                m_last_client_id = client_id_ul;
-         
-            };
-            m_command_list.push_back(command_item);
-
-            command_item.command = EMB_MSG_COMMAND_UNSUBACK;
-            command_item.handler = [this](int fd, std::string command, void* head) -> void
-            {
-                emb_msg_t* msg = (emb_msg_t*)head;
-                char* p_body = (char*)msg + sizeof(emb_msg_t);
-                std::string topic = p_body;
-                char* data = (char*)p_body + msg->topic_len;
-                std::string client_id = data;
-                LOGI << "event =" << command << ", topic =" << topic << ", clinet_id =" << client_id;
-
-                const char* p = client_id.c_str();
-                char* end;
-                emb_id_t client_id_ul = strtoul(p, &end, 10);
-
-                for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
-                {
-                    if((*it).client_id == client_id_ul) {
-                        it = m_subscribers.erase(it);
-                    }
-                    else {
-                        it++;
-                    }
-                }
-
-            };
-            m_command_list.push_back(command_item);
-
             m_loop = std::make_unique<EventLoop>();
-
-            EventLoopItem loop_item;
-            loop_item.fd = m_fd;
-            loop_item.dispatch = [this](int fd) -> void
-            {
-                read_event(fd);
-            };
-            m_loop->add_item(loop_item);
-
+            m_sock = std::make_unique<SocketStream>(broker_id);
+            
         }
 
         ~PubSubImpl()
@@ -115,34 +44,153 @@ class PubSubImpl
             }
         }
 
-        emb_id_t subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler)
+        int32_t connect()
         {
-            int ret, w_len;
-            emb_msg_t msg;
-
-            msg.head_sign = EMB_MSG_HEAD_SIGN;
-            msg.topic_len  = topic.size() + 1;
-            memcpy(msg.command, EMB_MSG_COMMAND_SUBSCRIBE, sizeof(msg.command));
+            int32_t ret;
             
-            w_len = sizeof(msg);
-            ret = write(m_fd, &msg, w_len);
-            if(ret != w_len) {
-                LOGE << "write fail : msg";
+            ret = m_sock->connect();
+            if(ret < 0) 
+            {
+                LOGE << "connect failed: ";
+                return -1; 
+            }
+            
+            m_fd = ret;
+
+            EmbCommandItem command_item;
+            command_item.type = EMB_MSG_TYPE_PUBLISH;
+            command_item.handler = [this](int fd, void* recv_msg) -> void
+            {
+                emb_msg_PUBLISH_t* msg = (emb_msg_PUBLISH_t*)recv_msg;
+
+                if( (msg->header.len    != sizeof(emb_msg_PUBLISH_t)) || 
+                    (msg->topic_len     != sizeof(msg->topic)) ||
+                    (msg->data_len      != sizeof(msg->data)) )
+                {
+                    LOGE << "length error";
+                    return;                    
+                }
+
+                std::string topic(msg->topic);
+
+                if((int32_t)topic.size() > msg->topic_len - 1 )
+                {
+                    LOGE << "bad topic";
+                }
+
+                // TODO only string. it should support binary.
+                std::string data(msg->data);
+
+                if((int32_t)data.size() > msg->data_len - 1 )
+                {
+                    LOGE << "bad data";
+                }
+
+                LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", data =" << msg->topic;
+
+                for(auto it = m_subscribers.begin(); it != m_subscribers.end(); it++ ) {
+                    if((*it).topic == topic ) {
+                        (*it).handler->handleMessage(topic, msg->data, msg->data_len);
+                    }
+                }
+            };
+            m_dispatch_list.push_back(command_item);
+
+            command_item.type = EMB_MSG_TYPE_SUBACK;
+            command_item.handler = [this](int fd, void* recv_msg) -> void
+            {
+                emb_msg_SUBACK_t* msg = (emb_msg_SUBACK_t*)recv_msg;
+
+                if( (msg->header.len    != sizeof(emb_msg_UNSUBSCRIBE_t) ) ||
+                    (msg->topic_len     != sizeof(msg->topic)) ||
+                    (msg->client_id_len != sizeof(msg->client_id)) )
+                {
+                    LOGE << "length error";
+                    return;                    
+                }
+
+                std::string topic(msg->topic);
+
+                if((int32_t)topic.size() > msg->topic_len - 1 )
+                {
+                    LOGE << "bad topic";
+                }
+
+                LOGI << "event =" << msg->header.type << "topic =" << msg->topic << ", clinet_id =" << msg->client_id;
+
+                m_last_client_id = msg->client_id;
+         
+            };
+            m_dispatch_list.push_back(command_item);
+
+            command_item.type = EMB_MSG_TYPE_UNSUBACK;
+            command_item.handler = [this](int fd, void* recv_msg) -> void
+            {
+                emb_msg_UNSUBACK_t* msg = (emb_msg_UNSUBACK_t*)recv_msg;
+
+                if( (msg->header.len    != sizeof(emb_msg_UNSUBACK_t) ) ||
+                    (msg->client_id_len != sizeof(msg->client_id)) )
+                {
+                    LOGE << "length error";
+                    return;                    
+                }
+
+                LOGI << "event =" << msg->header.type << ", clinet_id =" << msg->client_id;
+
+                for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
+                {
+                    if((*it).client_id == msg->client_id) {
+                        it = m_subscribers.erase(it);
+                    }
+                    else {
+                        it++;
+                    }
+                }
+ 
+                return;                    
+            };
+            m_dispatch_list.push_back(command_item);
+
+            EventLoopItem loop_item;
+            loop_item.fd = m_fd;
+            loop_item.dispatch = [this](int fd) -> void
+            {
+                read_event(fd);
+            };
+            m_loop->add_item(loop_item);
+
+            return 0;
+
+        }
+
+        emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler)
+        {
+            emb_msg_SUBSCRIBE_t msg;
+
+            if(topic.size() > sizeof(msg.topic) - 1) {
+                LOGE << "error :bad topic";
+                return EMB_ID_NOT_USE; 
             }
 
-            /* write topic */
-            w_len = msg.topic_len;
-            ret = write(m_fd, topic.c_str(), w_len);
+            msg.topic_len = sizeof(msg.topic);
+            memset(msg.topic, 0, msg.topic_len);
+            strncpy(msg.topic, topic.c_str(), topic.size()); 
+
+            msg.header.type = EMB_MSG_TYPE_SUBSCRIBE;
+            msg.header.len = sizeof(msg);
+
+            int32_t w_len = msg.header.len;
+            int32_t ret = m_sock->write(m_fd, &msg, w_len);
             if(ret != w_len) {
-                LOGE << "write fail : topic";
+                LOGE << "write fail";
+                return EMB_ID_NOT_USE; 
             }
 
             read_event(m_fd);
 
-
             SubscriberItemClient item;
             item.topic = topic;
-            item.handler = handler;
+            item.handler = std::move(handler);
             item.client_id = m_last_client_id;
             m_subscribers.push_back(item);
 
@@ -152,136 +200,124 @@ class PubSubImpl
 
             return (item.client_id);
         }
+
         void unsubscribe(emb_id_t client_id)
         {
-            int ret, w_len;
-            emb_msg_t msg;
-            std::string client_id_str = std::to_string(client_id);
+            emb_msg_UNSUBSCRIBE_t msg;
 
-            msg.head_sign = EMB_MSG_HEAD_SIGN;
-            msg.topic_len = 0;
-            msg.data_len  = client_id_str.size() + 1;
-            memcpy(msg.command, EMB_MSG_COMMAND_UNSUBSCRIBE, sizeof(msg.command));
+            msg.client_id_len = sizeof(msg.client_id);
+            msg.client_id     = client_id;
 
-            w_len = sizeof(msg);
-            ret = write(m_fd, &msg, w_len);
+            msg.header.type = EMB_MSG_TYPE_UNSUBSCRIBE;
+            msg.header.len = sizeof(msg);
+
+            int32_t w_len = msg.header.len;
+            int32_t ret = m_sock->write(m_fd, &msg, w_len);
             if(ret != w_len) {
-                perror("write fail");
+                LOGE << "write fail";
+                return; 
             }
 
-            /* write message */
-            w_len = msg.data_len;
-            ret = write(m_fd, client_id_str.c_str(), w_len);
+            return;
+        }
+
+        void publish(std::string topic, void* buf , int32_t len)
+        {
+            emb_msg_PUBLISH_t msg;
+
+            if(topic.size() > sizeof(msg.topic) - 1) {
+                LOGE << "error :bad topic";
+                return; 
+            }
+
+            if(len > (int32_t)sizeof(msg.data) - 1) {
+                LOGE << "error :bad data";
+                return; 
+            }
+
+            msg.topic_len = sizeof(msg.topic);
+            memset(msg.topic, 0, msg.topic_len);
+            strncpy(msg.topic, topic.c_str(), topic.size()); 
+
+            msg.data_len = sizeof(msg.data);
+            memset(msg.data, 0, msg.data_len);
+            memcpy(msg.data, buf, len);
+
+            msg.header.type = EMB_MSG_TYPE_PUBLISH;
+            msg.header.len = sizeof(msg);
+
+            int32_t w_len = msg.header.len;
+            int32_t ret = m_sock->write(m_fd, &msg, w_len);
             if(ret != w_len) {
-                perror("write fail");
+                LOGE << "write fail";
+                return; 
             }
 
-            read_event(m_fd);
-
-            for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
-            {
-                if((*it).client_id == client_id) {
-                    it = m_subscribers.erase(it);
-                }
-                else {
-                    it++;
-                }
-            }
-            dump_subcribes();
-
+            return;
         }
 
         void dump_subcribes ()
         {
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
-                LOGD << (*it).client_id << ", " << (*it).topic << ", " << (*it).handler;          
+                std::cout << "#### client subscribers" << std::endl;          
+                std::cout << (*it).client_id << ", " << (*it).topic << ", " << (*it).handler << std::endl;          
+                std::cout << "####" << std::endl;          
             }
-
-        }
-
-
-        void publish(std::string topic, void* buf , int32_t len)
-        {
-            int ret, w_len;
-            emb_msg_t msg;
-
-            msg.head_sign = EMB_MSG_HEAD_SIGN;
-            msg.topic_len  = topic.size() + 1;
-            msg.data_len  = len;
-            memcpy(msg.command, EMB_MSG_COMMAND_PUBLISH, sizeof(msg.command));
-            
-            w_len = sizeof(msg);
-            ret = write(m_fd, &msg, w_len);
-            if(ret != w_len) {
-                LOGE << "write fail : msg";
-            }
-
-            /* write topic */
-            w_len = msg.topic_len;
-            ret = write(m_fd, topic.c_str(), w_len);
-            if(ret != w_len) {
-                LOGE << "write fail : topic"; 
-            }
-
-            /* write data */
-            w_len = msg.data_len;
-            ret = write(m_fd, buf, w_len);
-            if(ret != w_len) {
-                LOGE << "write fail : data";
-            }
-
         }
 
         void read_event(int fd)
         {
-            char buf[512];
-            bzero(buf, sizeof buf);
-            int len = read(fd, buf, sizeof buf);
-            if (len > 0) 
-            {
-                emb_msg_t*  p_msg = (emb_msg_t*)buf;
-                
-                if( p_msg->head_sign != EMB_MSG_HEAD_SIGN) {
-                        LOGE << "msg header destoyed";
-                }
+            #define READ_MAX 512
+            char buf[READ_MAX];
+            
+            int ret = m_sock->read(fd, buf, sizeof buf);
+            if( ret > 0 ) {
+                emb_msg_header_t*  p_msg = (emb_msg_header_t*)buf;
 
-                char str[5];
-                bzero(str, sizeof str);
-                memcpy(str, p_msg->command, sizeof(p_msg->command)); 
-                std::string command(str);
-
-                for(auto it = m_command_list.begin(); it != m_command_list.end() ; it++) 
+                for(auto it = m_dispatch_list.begin(); it != m_dispatch_list.end() ; it++) 
                 {
-                    if( (*it).command == command ) 
+                    if( (*it).type == p_msg->type ) 
                     {
-                        (*it).handler(fd, command, p_msg);
+                        (*it).handler(fd, buf);
                     }
                 }
             }
-            else if (len == 0) 
+            else if (ret == 0) 
             {
-                LOGE << "socket " <<  fd << "disconnected";
-                return; 
+                LOGI << "socket fd = " << fd << " disconnect."; 
+                close(fd);
+                exit(-1);
             }
             else
             {
-                //TODO add EINTR, EAGAIN...
                 LOGE << "read failed:";
                 return; 
             }
         }
 
-        void event_loop(int count) 
+        void event_loop(void) 
         {
-            m_loop->run(count);
+            m_loop->run();
+        }
+
+        void add_loop_item(EventLoopItem &item)
+        {
+            m_loop->add_item(item);
+
+        }
+
+        void del_loop_item(int fd)
+        {
+            m_loop->del_item(fd);            
         }
 
     private:
-        int m_fd;
-        emb_id_t    m_last_client_id;
-        std::unique_ptr<EventLoop> m_loop;
-        std::vector<SubscriberItemClient> m_subscribers;
-        std::vector<EmbCommandItem>   m_command_list;
+        int                                 m_fd;
+        emb_id_t                            m_last_client_id;
+        std::unique_ptr<EventLoop>          m_loop;
+        std::unique_ptr<SocketStream>       m_sock;
+        std::vector<SubscriberItemClient>   m_subscribers;
+        std::vector<EmbCommandItem>         m_dispatch_list;
 };
 
 PubSub::PubSub(std::string broker_id)
@@ -293,9 +329,14 @@ PubSub::~PubSub()
 {
 }
 
-emb_id_t PubSub::subscribe(std::string topic, std::shared_ptr<SubscribeHandler> handler)
+int32_t PubSub::connect()
 {
-    return m_impl->subscribe(topic, handler);
+    return m_impl->connect();
+}
+
+emb_id_t PubSub::subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler)
+{
+    return m_impl->subscribe(topic, std::move(handler));
 }
 
 void PubSub::unsubscribe(emb_id_t client_id)
@@ -308,7 +349,17 @@ void PubSub::publish(std::string topic, void* buf , int32_t len)
     m_impl->publish(topic, buf, len);
 }
 
-void PubSub::event_loop(int count)
+void PubSub::event_loop(void)
 {
-    m_impl->event_loop(count);
+    m_impl->event_loop();
+}
+
+void PubSub::add_loop_item(EventLoopItem &item)
+{
+    m_impl->add_loop_item(item);
+}
+
+void PubSub::del_loop_item(int fd)
+{
+    m_impl->del_loop_item(fd);
 }
