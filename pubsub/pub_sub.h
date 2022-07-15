@@ -31,11 +31,13 @@ class PubSub
         emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler);
         void unsubscribe(emb_id_t client_id);
         void publish(std::string topic, void* buf , int32_t len);
+        void publish(std::string topic, void* buf , int32_t len, emb_id_t to_id);
 
-        void event_loop(void);
+        void run(void);
+        void stop(void);
 
-        void add_loop_item(EventLoopItem &item);
-        void del_loop_item(int fd); 
+        void add_event(EventLoopItem &item);
+        void del_event(int fd); 
 
     private:
         std::unique_ptr<PubSubImpl> m_impl;

@@ -1,14 +1,16 @@
-#include <stdio.h>
-#include <unistd.h>
 #include <string>
 #include <memory>
-#include <vector>
 #include <list>
 #include <functional>
 
-#include <sys/socket.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <signal.h>
 #include <sys/un.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
 
 #include "ez_stream.h"
 #include "ez_log.h"
@@ -47,7 +49,7 @@ EventLoop::~EventLoop()
     }
 }
         
-void EventLoop::add_item(EventLoopItem &item)
+void EventLoop::add_event(EventLoopItem &item)
 {
     struct epoll_event ev;
     int ret;
@@ -60,14 +62,14 @@ void EventLoop::add_item(EventLoopItem &item)
     WRAP_SYSCALL(ret, ::epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, item.fd, &ev));
     if (ret < 0) {
         LOGE << "epoll_ctl::EPOLL_CTL_ADD";
-        ::perror("epoll_ctl::EPOLL_CTL_ADD");
+        LOGE << ::strerror(errno) ;
         WRAP_SYSCALL(ret, ::close(m_epoll_fd));
         return;
     }
     m_item_list.push_back(item);
 }
 
-void EventLoop::del_item(int fd) 
+void EventLoop::del_event(int fd) 
 {
 
     for (auto it = m_item_list.begin(); it != m_item_list.end();)
@@ -110,11 +112,10 @@ void EventLoop::run(void)
     }
 }
 
-#include <stdio.h>
-#include <signal.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <sys/time.h>
+void EventLoop::stop(void)
+{
+    m_running = false;
+}
 
 SocketStream::SocketStream(std::string addr)
 {
@@ -123,20 +124,17 @@ SocketStream::SocketStream(std::string addr)
 
 SocketStream::~SocketStream()
 {
-    int ret;
-
-    WRAP_SYSCALL(ret, ::unlink(m_addr.c_str()));
 }
 
 int SocketStream::listen(void)
 {
     #define MAX_LISTEN  128
-    int ret, val, fd;
+    int ret, fd;
 
     WRAP_SYSCALL(fd, ::socket(AF_UNIX, SOCK_STREAM, 0));
     if (fd < 0)
     {
-        ::perror("socket error:");
+        LOGE << ::strerror(errno);
         return -1;
     }
 
@@ -151,24 +149,24 @@ int SocketStream::listen(void)
     WRAP_SYSCALL(ret, ::bind(fd, (struct sockaddr*)&addr, sizeof addr));
     if (ret < 0)
     {
-        ::perror("bind error:");
+        LOGE << ::strerror(errno);
         return -1;
     }
 
     WRAP_SYSCALL(ret, ::listen(fd, MAX_LISTEN));
     if (ret < 0)
     {
-        ::perror("listen error:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
 
     //NON BLOCKING
     /*
-    val = 1;
+    int val = 1;
     WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
     if (ret < 0)
     {
-        ::perror("ioctl error:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
     */
@@ -185,12 +183,12 @@ int SocketStream::listen(void)
 
 int SocketStream::connect(void)
 {
-    int ret, val, fd;
+    int ret, fd;
 
     WRAP_SYSCALL(fd, ::socket(AF_UNIX, SOCK_STREAM, 0));
     if (fd < 0)
     {
-        ::perror("socket error:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
 
@@ -203,17 +201,17 @@ int SocketStream::connect(void)
     WRAP_SYSCALL(ret, ::connect(fd, (struct sockaddr*)&addr, sizeof addr));
     if (ret < 0)
     {
-        ::perror("connect error:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
 
     //NON BLOCKING
     /*
-    val = 1;
+    int val = 1;
     WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
     if (ret < 0)
     {
-        ::perror("ioctl error:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
     */
@@ -229,24 +227,26 @@ int SocketStream::connect(void)
 
 int  SocketStream::accept(int listen_fd)
 {
-    int ret, val, conn_sock;
+    int conn_sock;
     sockaddr_un addr;
     socklen_t addrlen = 0;
  
     WRAP_SYSCALL(conn_sock, ::accept(listen_fd, (struct sockaddr *) &addr, &addrlen));
     if (conn_sock < 0) {
-        ::perror("accept failed:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
 
     //NON BLOCKING
-    val = 1;
+    /*
+    int ret, val = 1;
     WRAP_SYSCALL(ret, ::ioctl(conn_sock, FIONBIO, &val));
     if (ret < 0)
     {
-        ::perror("ioctl error:");
+        LOGE << ::strerror(errno) ;
         return -1;
     }
+    */
 
     return conn_sock;
 }
@@ -279,13 +279,13 @@ int32_t SocketStream::read(int fd, void* buf, int32_t size)
         }
         else if (len < 0 && errno == EAGAIN)  
         {
-            ::perror("read error:");
+            LOGW << ::strerror(errno) ;
             WRAP_SYSCALL(ret, ::nanosleep(&req, NULL));
             continue;
         }
         else if (len < 0)  
         {
-            ::perror("read error:");
+            LOGE << ::strerror(errno) ;
             return -1; 
         }
         else if (len == 0)  
@@ -320,13 +320,13 @@ int32_t SocketStream::read(int fd, void* buf, int32_t size)
         }
         else if (len < 0 && errno == EAGAIN)  
         {
-            ::perror("read error:");
+            LOGW << ::strerror(errno) ;
             WRAP_SYSCALL(ret, ::nanosleep(&req, NULL));
             continue;
         }
         else if (len < 0)  
         {
-            ::perror("read error:");
+            LOGE << ::strerror(errno) ;
             return -1; 
         }
         else if (len == 0)  
@@ -366,13 +366,13 @@ int32_t SocketStream::write(int fd, void* buf, int32_t size)
         }
         else if (len < 0 && errno == EAGAIN)  
         {
-            ::perror("write error:");
+            LOGE << ::strerror(errno) ;
             WRAP_SYSCALL(ret, ::nanosleep(&req, NULL));
             continue;
         }
         else if (len < 0)  
         {
-            ::perror("write error:");
+            LOGE << ::strerror(errno) ;
             return -1; 
         }
         else if (len == 0)  
@@ -396,13 +396,13 @@ int32_t SocketStream::write(int fd, void* buf, int32_t size)
         }
         else if (len < 0 && errno == EAGAIN)  
         {
-            ::perror("read error:");
+            LOGE << ::strerror(errno) ;
             WRAP_SYSCALL(ret, ::nanosleep(&req, NULL));
             continue;
         }
         else if (len < 0)  
         {
-            ::perror("read error:");
+            LOGE << ::strerror(errno) ;
             return -1; 
         }
         else if (len == 0)  

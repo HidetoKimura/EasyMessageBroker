@@ -18,9 +18,10 @@ class EventLoop
         EventLoop();
         ~EventLoop() ;
         
-        void add_item(EventLoopItem &item);
-        void del_item(int fd); 
+        void add_event(EventLoopItem &item);
+        void del_event(int fd); 
         void run(void);
+        void stop(void);
     private:
 	    int  m_epoll_fd;
         bool m_running;

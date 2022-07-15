@@ -65,7 +65,8 @@ class PubSubImpl
 
                 if( (msg->header.len    != sizeof(emb_msg_PUBLISH_t)) || 
                     (msg->topic_len     != sizeof(msg->topic)) ||
-                    (msg->data_len      != sizeof(msg->data)) )
+                    (msg->data_len      != sizeof(msg->data))  ||
+                    (msg->client_id_len != sizeof(msg->client_id)) )
                 {
                     LOGE << "length error";
                     return;                    
@@ -86,10 +87,10 @@ class PubSubImpl
                     LOGE << "bad data";
                 }
 
-                LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", data =" << msg->topic;
+                LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", data =" << msg->data << ", client_id =" << msg->client_id;
 
                 for(auto it = m_subscribers.begin(); it != m_subscribers.end(); it++ ) {
-                    if((*it).topic == topic ) {
+                    if((*it).client_id == msg->client_id ) {
                         (*it).handler->handleMessage(topic, msg->data, msg->data_len);
                     }
                 }
@@ -159,7 +160,7 @@ class PubSubImpl
             {
                 read_event(fd);
             };
-            m_loop->add_item(loop_item);
+            m_loop->add_event(loop_item);
 
             return 0;
 
@@ -222,8 +223,7 @@ class PubSubImpl
 
             return;
         }
-
-        void publish(std::string topic, void* buf , int32_t len)
+        void publish(std::string topic, void* buf , int32_t len, emb_id_t to_id)
         {
             emb_msg_PUBLISH_t msg;
 
@@ -245,6 +245,9 @@ class PubSubImpl
             memset(msg.data, 0, msg.data_len);
             memcpy(msg.data, buf, len);
 
+            msg.client_id_len = sizeof(msg.client_id_len);
+            msg.client_id     = to_id;
+
             msg.header.type = EMB_MSG_TYPE_PUBLISH;
             msg.header.len = sizeof(msg);
 
@@ -254,7 +257,6 @@ class PubSubImpl
                 LOGE << "write fail";
                 return; 
             }
-
             return;
         }
 
@@ -297,20 +299,25 @@ class PubSubImpl
             }
         }
 
-        void event_loop(void) 
+        void run(void) 
         {
             m_loop->run();
         }
 
-        void add_loop_item(EventLoopItem &item)
+        void stop(void) 
         {
-            m_loop->add_item(item);
+            m_loop->stop();
+        }
+
+        void add_event(EventLoopItem &item)
+        {
+            m_loop->add_event(item);
 
         }
 
-        void del_loop_item(int fd)
+        void del_event(int fd)
         {
-            m_loop->del_item(fd);            
+            m_loop->del_event(fd);            
         }
 
     private:
@@ -348,20 +355,30 @@ void PubSub::unsubscribe(emb_id_t client_id)
 
 void PubSub::publish(std::string topic, void* buf , int32_t len)
 {
-    m_impl->publish(topic, buf, len);
+    m_impl->publish(topic, buf, len, EMB_ID_BROADCAST);
 }
 
-void PubSub::event_loop(void)
+void PubSub::publish(std::string topic, void* buf , int32_t len, emb_id_t to_id)
 {
-    m_impl->event_loop();
+    m_impl->publish(topic, buf, len, to_id);
 }
 
-void PubSub::add_loop_item(EventLoopItem &item)
+void PubSub::run(void)
 {
-    m_impl->add_loop_item(item);
+    m_impl->run();
 }
 
-void PubSub::del_loop_item(int fd)
+void PubSub::stop(void)
 {
-    m_impl->del_loop_item(fd);
+    m_impl->stop();
+}
+
+void PubSub::add_event(EventLoopItem &item)
+{
+    m_impl->add_event(item);
+}
+
+void PubSub::del_event(int fd)
+{
+    m_impl->del_event(fd);
 }

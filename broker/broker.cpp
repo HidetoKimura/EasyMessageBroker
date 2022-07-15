@@ -32,7 +32,6 @@ class BrokerImpl
           : m_serverFd(-1)
           , m_clients()
           , m_subscribers()
-          , m_running(true)
         {
             m_loop = std::make_unique<EventLoop>();
             m_sock = std::make_unique<SocketStream>(broker_id);
@@ -40,8 +39,6 @@ class BrokerImpl
 
         ~BrokerImpl()
         {
-            m_running = false;
-
             for (auto it = m_clients.begin(); it != m_clients.end(); it++)
             {
                 close(*it);
@@ -87,7 +84,7 @@ class BrokerImpl
                     LOGE << "bad data";
                 }
 
-                LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", data =" << msg->topic;
+                LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", data =" << msg->data;
 
                 send_publish(msg);
 
@@ -124,7 +121,8 @@ class BrokerImpl
                 m_subscribers.push_back(item);
 
                 send_suback(fd, topic, item.client_id);
-                //dump_subcribes();
+                
+                dump_subcribes();
                 return;
             };
             m_dispatch_list.push_back(dispatch_item);
@@ -154,7 +152,8 @@ class BrokerImpl
                         it++;
                     }
                 }
-                //dump_subcribes();                
+                
+                dump_subcribes();                
                 return;
             };
 
@@ -178,12 +177,12 @@ class BrokerImpl
                 {
                     read_event(fd);
                 };
-                m_loop->add_item(conn_item);
+                m_loop->add_event(conn_item);
 
                 m_clients.push_back(conn_sock);
 
             };
-            m_loop->add_item(loop_item);
+            m_loop->add_event(loop_item);
 
             return 0;
 
@@ -236,14 +235,15 @@ class BrokerImpl
         void send_publish(emb_msg_PUBLISH_t *msg)
         {
             std::string topic(msg->topic);
+            emb_id_t tmp_client_id = msg->client_id;
 
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++)
             {
-
-                LOGD << "broker_topic=" << (*it).topic << " request_topic=" << topic ;
-
                 if((*it).topic != topic) continue;
-                
+                if(tmp_client_id != EMB_ID_BROADCAST) {
+                    if((*it).client_id != tmp_client_id) continue;
+                }
+                msg->client_id = (*it).client_id;
                 int w_len = msg->header.len;
                 int ret = m_sock->write((*it).fd, msg, w_len);
                 if(ret != w_len) {
@@ -291,9 +291,14 @@ class BrokerImpl
             }
         }
 
-        void event_loop(void)
+        void run(void)
         {
             m_loop->run();
+        }
+
+        void stop(void)
+        {
+            m_loop->stop();
         }
 
     private:
@@ -303,7 +308,6 @@ class BrokerImpl
         std::unique_ptr<SocketStream>   m_sock;
         std::vector<EmbCommandItem>     m_dispatch_list;
         std::list<SuscribeItemBroker>   m_subscribers;
-        bool        m_running;
         std::string m_broker_id;
 };
 
@@ -320,8 +324,12 @@ int32_t Broker::listen(void)
 {
     return m_impl->listen();    
 }
-void Broker::event_loop(void)
+void Broker::run(void)
 {
-    m_impl->event_loop();
+    m_impl->run();
 }
 
+void Broker::stop(void)
+{
+    m_impl->stop();
+}

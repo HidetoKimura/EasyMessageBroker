@@ -21,7 +21,7 @@ class MySubscribeHandler : public SubscribeHandler
     public:
         virtual void handleMessage(std::string topic, void *buf, int32_t len)
         {
-            std::cout << " handleMessage : " << (char*)buf << std::endl;
+            std::cout << this << ":handleMessage():" << (char*)buf << std::endl;
         }
 };
 
@@ -30,9 +30,11 @@ static void usage(const char* name )
     std::cout << std::endl ;
     std::cout << "Usage:" << std::endl ;
     std::cout << "$ ./pubsub " << name << " &" << std::endl ;
-    std::cout << "$ echo \"pub <topic> <message>\" > " << name << " &" << std::endl ;
-    std::cout << "$ echo \"sub <topic> \" > " << name << " &" << std::endl ;
-    std::cout << "$ echo \"unsub <id> \" > " << name << " &" << std::endl ;
+    std::cout << "$ echo \"sub <topic>\" > " << name << std::endl ;
+    std::cout << "$ echo \"pub <topic> <message>\" > " << name << std::endl ;
+    std::cout << "$ echo \"pubid <topic> <message> <id>\" > " << name << std::endl ;
+    std::cout << "$ echo \"unsub <id>\" > " << name << std::endl ;
+    std::cout << "$ echo \"stop\" > " << name << std::endl ;
 }
 
 static int create_fifo_fd(const char *name)
@@ -55,16 +57,14 @@ static int create_fifo_fd(const char *name)
     return fd;
 }
 
-using ParseHandler = std::function<void(int argc, char* argv[])>;
-
-static void parse_command(char* s, ParseHandler handler)
+static void parse_command(char* s, std::function<void(int argc, char* argv[])> handler)
 {
-    #define DELIM " ,\t\n\r"
-    #define ARG_MAX 32
-    int32_t      argc;
-    char*        argv[ARG_MAX];
-    uint32_t     i;
-    char*        tok;
+    #define     DELIM   " \t\n\r"
+    #define     ARG_MAX 32
+    int32_t     argc;
+    char*       argv[ARG_MAX];
+    uint32_t    i;
+    char*       tok;
 
     tok = strtok(s, DELIM); 
     if(tok == NULL) {
@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
 
     auto ret = pubsub->connect();
     if(ret < 0) {
-        std::cout << "connect failed:" << std::endl;
+        std::cout << "connect failed:: " << strerror(errno) << std::endl;
         return -1;
     }
 
@@ -115,7 +115,8 @@ int main(int argc, char *argv[])
     item.fd = fd;
     item.dispatch = [&](int fd) -> void
     {
-        char buf[4096];
+        #define MAX_SIZE    256
+        char buf[MAX_SIZE];
         int  len;
         bzero(buf, sizeof(buf));
 
@@ -131,25 +132,6 @@ int main(int argc, char *argv[])
             return;
         }
 
-        /*
-        std::string  s = (char*)buf;
-        auto list = std::vector<std::string>();
-
-        auto offset = std::string::size_type(0);
-        do {
-            auto pos = s.find(' ', offset); 
-            if(pos == std::string::npos) {
-                auto end = s.find('\n', offset);
-                list.push_back(s.substr(offset, end - offset));
-                break;
-            }
-            list.push_back(s.substr(offset, pos - offset));
-            offset = pos + 1;
-        } while(1);
-        */
-
-       
-
         auto handler = [&](int argc, char* argv[]) -> void {
             if(argc == 2 && strcmp(argv[0], "sub") == 0)
             {
@@ -161,9 +143,20 @@ int main(int argc, char *argv[])
             {
                 pubsub->publish(std::string(argv[1]), (void*)argv[2], strlen(argv[2]));
             }
+            else if(argc == 4 && strcmp(argv[0], "pubid") == 0)
+            {
+                pubsub->publish(std::string(argv[1]), (void*)argv[2], strlen(argv[2]), std::stoi(argv[3]));
+            }
             else if(argc == 2 && strcmp(argv[0], "unsub") == 0)
             {
                 pubsub->unsubscribe(std::stoi(argv[1]));
+            }
+            else if(argc == 1 && strcmp(argv[0], "stop") == 0)
+            {
+                pubsub->stop();
+            }
+            else {
+                std::cout << "bad command:" << (char*)buf << std::endl;
             }
 
             return;
@@ -176,10 +169,12 @@ int main(int argc, char *argv[])
 
     };
     
-    pubsub->add_loop_item(item);
+    pubsub->add_event(item);
     
-    pubsub->event_loop();
+    pubsub->run();
 
+    pubsub->del_event(fd);
+ 
     return 0;
 }
 

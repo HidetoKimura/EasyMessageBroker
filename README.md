@@ -11,10 +11,19 @@ $ make
 ## Test
 ~~~
 $ ./broker &
-$ ./pubsub sub topic_a &
-$ ./pubsub sub topic_b &
-$ ./pubsub pub topic_b hello &
+$ ./pubsub /tmp/emb_fifo &
+$ ./pubsub /tmp/emb_fifo2 &
+$ echo "sub <topic>" > /tmp/emb_fifo
+output id : ex. sub id = 10000
+
+$ echo "sub <topic>" > /tmp/emb_fifo2
+output id : ex. sub id = 10001
+
+$ echo "pub <topic> <message>" > /tmp/emb_fifo
+$ echo "pubid <topic> <message> <id>" > /tmp/emb_fifo
+$ echo "unsub <id>" > /tmp/emb_fifo
+$ echo "stop" > /tmp/emb_fifo
+$ echo "stop" > /tmp/emb_fifo2
 
 $ killall broker
-$ killall pubsub
 ~~~

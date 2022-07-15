@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <memory>
 
+#include <ez_stream.h>
+
 using namespace std;
 
 class BrokerImpl;
@@ -18,10 +20,11 @@ class Broker
 
         int32_t listen(void);
 
-        void event_loop(void);
+        void run(void);
+        void stop(void);
 
-        void dispatch(int fd);
-        int  get_fd(void);
+        void add_event(EventLoopItem &item);
+        void del_event(int fd); 
 
     private:
         std::unique_ptr<BrokerImpl> m_impl;

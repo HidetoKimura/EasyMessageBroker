@@ -4,7 +4,8 @@
 #include <stdint.h>
 #include <functional>
 
-#define EMB_ID_NOT_USE  0
+#define EMB_ID_NOT_USE    0
+#define EMB_ID_BROADCAST  1
 
 typedef uint32_t emb_id_t;
 
@@ -38,6 +39,8 @@ typedef struct {
     char              topic[EMB_MSG_TOPIC_MAX];
     int32_t           data_len;
     char              data[EMB_MSG_DATA_MAX];
+    int32_t           client_id_len;
+    emb_id_t          client_id;
 } emb_msg_PUBLISH_t;
 
 typedef struct {

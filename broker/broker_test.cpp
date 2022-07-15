@@ -16,7 +16,7 @@ int main()
         return -1;
     }
 
-    broker->event_loop();
+    broker->run();
 
     return 0;
 }
