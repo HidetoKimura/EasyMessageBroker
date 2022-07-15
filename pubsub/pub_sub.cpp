@@ -101,7 +101,7 @@ class PubSubImpl
             {
                 emb_msg_SUBACK_t* msg = (emb_msg_SUBACK_t*)recv_msg;
 
-                if( (msg->header.len    != sizeof(emb_msg_UNSUBSCRIBE_t) ) ||
+                if( (msg->header.len    != sizeof(emb_msg_SUBACK_t) ) ||
                     (msg->topic_len     != sizeof(msg->topic)) ||
                     (msg->client_id_len != sizeof(msg->client_id)) )
                 {
@@ -116,7 +116,7 @@ class PubSubImpl
                     LOGE << "bad topic";
                 }
 
-                LOGI << "event =" << msg->header.type << "topic =" << msg->topic << ", clinet_id =" << msg->client_id;
+                LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", clinet_id =" << msg->client_id;
 
                 m_last_client_id = msg->client_id;
          
@@ -146,7 +146,9 @@ class PubSubImpl
                         it++;
                     }
                 }
- 
+
+                dump_subcribes();
+
                 return;                    
             };
             m_dispatch_list.push_back(command_item);
@@ -258,11 +260,11 @@ class PubSubImpl
 
         void dump_subcribes ()
         {
+            std::cout << "#### client subscribers" << std::endl;          
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
-                std::cout << "#### client subscribers" << std::endl;          
                 std::cout << (*it).client_id << ", " << (*it).topic << ", " << (*it).handler << std::endl;          
-                std::cout << "####" << std::endl;          
             }
+            std::cout << "####" << std::endl;          
         }
 
         void read_event(int fd)

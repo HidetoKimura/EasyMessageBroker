@@ -163,6 +163,7 @@ int SocketStream::listen(void)
     }
 
     //NON BLOCKING
+    /*
     val = 1;
     WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
     if (ret < 0)
@@ -170,6 +171,7 @@ int SocketStream::listen(void)
         ::perror("ioctl error:");
         return -1;
     }
+    */
 
     struct sigaction act;
     ::memset(&act, 0, sizeof(struct sigaction));
@@ -206,6 +208,7 @@ int SocketStream::connect(void)
     }
 
     //NON BLOCKING
+    /*
     val = 1;
     WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
     if (ret < 0)
@@ -213,6 +216,7 @@ int SocketStream::connect(void)
         ::perror("ioctl error:");
         return -1;
     }
+    */
 
     struct sigaction act;
     ::memset(&act, 0, sizeof(struct sigaction));

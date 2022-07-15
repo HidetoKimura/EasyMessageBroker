@@ -124,7 +124,7 @@ class BrokerImpl
                 m_subscribers.push_back(item);
 
                 send_suback(fd, topic, item.client_id);
-                dump_subcribes();
+                //dump_subcribes();
                 return;
             };
             m_dispatch_list.push_back(dispatch_item);
@@ -143,17 +143,18 @@ class BrokerImpl
 
                 LOGI << "event =" << msg->header.type << ", clinet_id =" << msg->client_id;
                 
+                send_unsuback(fd, msg->client_id);
+
                 for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
                 {
                     if((*it).client_id == msg->client_id) {
                         it = m_subscribers.erase(it);
-                        send_unsuback((*it).fd, msg->client_id);
                     }
                     else {
                         it++;
                     }
                 }
-                dump_subcribes();                
+                //dump_subcribes();                
                 return;
             };
 
@@ -201,9 +202,9 @@ class BrokerImpl
             strncpy(msg.topic, topic.c_str(), topic.size()); 
 
             msg.client_id_len = sizeof(msg.client_id);
-            msg.client_id = msg.client_id;
+            msg.client_id = client_id;
 
-            msg.header.type = EMB_MSG_TYPE_UNSUBACK;
+            msg.header.type = EMB_MSG_TYPE_SUBACK;
             msg.header.len = sizeof(msg);
 
             int32_t w_len = msg.header.len;
@@ -253,12 +254,11 @@ class BrokerImpl
 
         void dump_subcribes ()
         {
+            std::cout << "#### broker subscribers" << std::endl;          
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
-                std::cout << "#### broker subscribers" << std::endl;          
                 std::cout << (*it).client_id << ", " << (*it).topic << ", " << (*it).fd << std::endl;          
-                std::cout << "####" << std::endl;          
             }
-
+            std::cout << "####" << std::endl;          
         }
 
         void read_event(int fd) 

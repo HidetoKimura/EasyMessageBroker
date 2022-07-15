@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ez_stream.h"
+#include "ez_log.h"
 #include "pub_sub.h"
 
 using namespace std;
@@ -26,11 +27,12 @@ class MySubscribeHandler : public SubscribeHandler
 
 static void usage(const char* name )
 {
+    std::cout << std::endl ;
     std::cout << "Usage:" << std::endl ;
-    std::cout << "$ ./pubsub " << name << std::endl ;
-    std::cout << "$ echo \"pub <topic> <message>\" > " << name << std::endl ;
-    std::cout << "$ echo \"sub <topic> \" > " << name << std::endl ;
-    std::cout << "$ echo \"unsub <id> \" > " << name << std::endl ;
+    std::cout << "$ ./pubsub " << name << " &" << std::endl ;
+    std::cout << "$ echo \"pub <topic> <message>\" > " << name << " &" << std::endl ;
+    std::cout << "$ echo \"sub <topic> \" > " << name << " &" << std::endl ;
+    std::cout << "$ echo \"unsub <id> \" > " << name << " &" << std::endl ;
 }
 
 static int create_fifo_fd(const char *name)
@@ -52,6 +54,35 @@ static int create_fifo_fd(const char *name)
 
     return fd;
 }
+
+using ParseHandler = std::function<void(int argc, char* argv[])>;
+
+static void parse_command(char* s, ParseHandler handler)
+{
+    #define DELIM " ,\t\n\r"
+    #define ARG_MAX 32
+    int32_t      argc;
+    char*        argv[ARG_MAX];
+    uint32_t     i;
+    char*        tok;
+
+    tok = strtok(s, DELIM); 
+    if(tok == NULL) {
+        return;
+    }
+        
+    argv[0] = tok;
+    for(i = 1; i < (sizeof(argv)/sizeof(argv[0])); i++) {
+        if((tok = strtok(NULL, DELIM)) == NULL) break;
+            argv[i] = tok;
+    }
+    argc = i;
+    
+    handler(argc, argv);
+
+    return;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -80,19 +111,27 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    std::cout << "fd = " << fd << std::endl;
-
     EventLoopItem item;
     item.fd = fd;
     item.dispatch = [&](int fd) -> void
     {
         char buf[4096];
         int  len;
+        bzero(buf, sizeof(buf));
+
         len = read(fd, buf, sizeof(buf)-1);
-        if(len < 0 ) {
+        if(len < 0 ) 
+        {
+            perror("read error:");
+            return;
+        }
+        else if (len == 0)
+        {
+            sleep(1);
             return;
         }
 
+        /*
         std::string  s = (char*)buf;
         auto list = std::vector<std::string>();
 
@@ -100,32 +139,41 @@ int main(int argc, char *argv[])
         do {
             auto pos = s.find(' ', offset); 
             if(pos == std::string::npos) {
-                list.push_back(s.substr(offset));
+                auto end = s.find('\n', offset);
+                list.push_back(s.substr(offset, end - offset));
                 break;
             }
             list.push_back(s.substr(offset, pos - offset));
             offset = pos + 1;
         } while(1);
+        */
 
-        if(list.size() == 2 && list[0] == "sub")
-        {
-            std::unique_ptr<SubscribeHandler> handler = std::make_unique<MySubscribeHandler>();
-            auto id = pubsub->subscribe(list[1], std::move(handler));
-            std::cout << "sub id = " << id << std::endl;
-        }
-        if(list.size() == 3 && list[0] == "pub")
-        {
-            std::unique_ptr<SubscribeHandler> handler = std::make_unique<MySubscribeHandler>();
-            pubsub->publish(list[1], (void*)list[2].c_str(), list[2].size() + 1);
-        }
-        if(list.size() == 2 && list[0] == "unsub")
-        {
-            std::unique_ptr<SubscribeHandler> handler = std::make_unique<MySubscribeHandler>();
-            
-            pubsub->unsubscribe(std::stoi(list[1].c_str()));
-        }
+       
+
+        auto handler = [&](int argc, char* argv[]) -> void {
+            if(argc == 2 && strcmp(argv[0], "sub") == 0)
+            {
+                std::unique_ptr<SubscribeHandler> handler = std::make_unique<MySubscribeHandler>();
+                auto id = pubsub->subscribe(std::string(argv[1]), std::move(handler));
+                std::cout << "sub id = " << id << std::endl;
+            }
+            else if(argc == 3 && strcmp(argv[0], "pub") == 0)
+            {
+                pubsub->publish(std::string(argv[1]), (void*)argv[2], strlen(argv[2]));
+            }
+            else if(argc == 2 && strcmp(argv[0], "unsub") == 0)
+            {
+                pubsub->unsubscribe(std::stoi(argv[1]));
+            }
+
+            return;
+
+        };
+
+        parse_command((char*)buf, handler);
 
         return;
+
     };
     
     pubsub->add_loop_item(item);
