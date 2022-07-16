@@ -15,7 +15,7 @@
 #include "ez_stream.h"
 #include "ez_log.h"
 
-using namespace std;
+namespace ez::stream {
 
 #define WRAP_SYSCALL(result_, syscall_)         \
     do {                                        \
@@ -117,9 +117,10 @@ void EventLoop::stop(void)
     m_running = false;
 }
 
-SocketStream::SocketStream(std::string addr)
+SocketStream::SocketStream(std::string addr, bool non_block)
 {
     m_addr = addr;
+    m_non_block = non_block;
 }
 
 SocketStream::~SocketStream()
@@ -161,15 +162,15 @@ int SocketStream::listen(void)
     }
 
     //NON BLOCKING
-    /*
-    int val = 1;
-    WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
-    if (ret < 0)
-    {
-        LOGE << ::strerror(errno) ;
-        return -1;
+    if(m_non_block) {
+        int val = 1;
+        WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
+        if (ret < 0)
+        {
+            LOGE << ::strerror(errno) ;
+            return -1;
+        }
     }
-    */
 
     struct sigaction act;
     ::memset(&act, 0, sizeof(struct sigaction));
@@ -206,15 +207,15 @@ int SocketStream::connect(void)
     }
 
     //NON BLOCKING
-    /*
-    int val = 1;
-    WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
-    if (ret < 0)
-    {
-        LOGE << ::strerror(errno) ;
-        return -1;
+    if(m_non_block) {
+        int val = 1;
+        WRAP_SYSCALL(ret, ::ioctl(fd, FIONBIO, &val));
+        if (ret < 0)
+        {
+            LOGE << ::strerror(errno) ;
+            return -1;
+        }
     }
-    */
 
     struct sigaction act;
     ::memset(&act, 0, sizeof(struct sigaction));
@@ -264,7 +265,7 @@ int32_t SocketStream::read(int fd, void* buf, int32_t size)
     ss_msg_t    *header;
     int         r_len, len, ret;
     char        *p_buf;
-    struct timespec req = {0, 100 * MILLI_SEC};
+    struct timespec req = {0, 100 * MILLI_SEC}; // TODO temporary value
 
     r_len = sizeof(header);
     p_buf = (char*)alloca(r_len);
@@ -416,6 +417,15 @@ int32_t SocketStream::write(int fd, void* buf, int32_t size)
     } while(1);
 
     return header->body_len;
+}
+
+void SocketStream::close(int fd)
+{
+    int ret;
+    WRAP_SYSCALL(ret, ::close(fd));
+    return;
+}
+
 }
 
 

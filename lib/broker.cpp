@@ -1,11 +1,10 @@
-#include "broker.h"
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <sys/un.h>
 #include <sys/epoll.h>
-#include <pthread.h>
+//#include <pthread.h>
 
 #include <vector>
 #include <string>
@@ -15,9 +14,12 @@
 #include "ez_stream.h"
 #include "ez_log.h"
 
-#include "emb_msg.h"
+#include "emb.h"
+#include "emb_internal.h"
 
-using namespace std;
+namespace emb {
+
+using namespace ez::stream;
 
 typedef struct {
     emb_id_t        client_id;
@@ -41,7 +43,7 @@ class BrokerImpl
         {
             for (auto it = m_clients.begin(); it != m_clients.end(); it++)
             {
-                close(*it);
+                m_sock->close(*it);
             }
         }
 
@@ -282,7 +284,7 @@ class BrokerImpl
             {
                 LOGI << "socket fd = " << fd << " disconnect."; 
                 m_clients.erase(std::remove(m_clients.begin(), m_clients.end(), fd), m_clients.end());
-                close(fd);
+                m_sock->close(fd);
             }
             else
             {
@@ -332,4 +334,6 @@ void Broker::run(void)
 void Broker::stop(void)
 {
     m_impl->stop();
+}
+
 }

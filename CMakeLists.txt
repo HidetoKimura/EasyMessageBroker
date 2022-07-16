@@ -6,17 +6,18 @@ SET(CMAKE_C_FLAGS "-Wall -g -O2")
 SET(CMAKE_CXX_FLAGS "-Wall -g -O2")
 
 set(CMAKE_CXX_STANDARD 17)
-FILE(GLOB_RECURSE BROKER_LIST "broker/*.cpp")
-FILE(GLOB_RECURSE PUBSUB_LIST "pubsub/*.cpp")
+FILE(GLOB_RECURSE LIB_LIST    "lib/*.cpp")
 FILE(GLOB_RECURSE UTIL_LIST   "util/*.cpp")
 
 INCLUDE_DIRECTORIES("include")
 INCLUDE_DIRECTORIES("util")
 
 ADD_LIBRARY(ez_stream SHARED ${UTIL_LIST})
+ADD_LIBRARY(emb SHARED ${LIB_LIST})
+TARGET_LINK_LIBRARIES(emb ez_stream)
 
-ADD_EXECUTABLE(broker  ${BROKER_LIST})
-TARGET_LINK_LIBRARIES(broker ez_stream)
+ADD_EXECUTABLE(broker  "sample/broker_test.cpp")
+TARGET_LINK_LIBRARIES(broker emb)
 
-ADD_EXECUTABLE(pubsub  ${PUBSUB_LIST})
-TARGET_LINK_LIBRARIES(pubsub ez_stream)
+ADD_EXECUTABLE(pubsub  "sample/pub_sub_test.cpp")
+TARGET_LINK_LIBRARIES(pubsub emb)

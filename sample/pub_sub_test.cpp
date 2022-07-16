@@ -12,9 +12,10 @@
 
 #include "ez_stream.h"
 #include "ez_log.h"
-#include "pub_sub.h"
+#include "emb.h"
 
-using namespace std;
+using namespace emb;
+using namespace ez::stream;
 
 class MySubscribeHandler : public SubscribeHandler
 {

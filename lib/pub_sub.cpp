@@ -9,13 +9,15 @@
 #include <sys/un.h>
 #include <sys/epoll.h>
 
-#include "emb_msg.h"
-#include "pub_sub.h"
+#include "emb.h"
+#include "emb_internal.h"
 
 #include "ez_log.h"
 #include "ez_stream.h"
 
-using namespace std;
+namespace emb {
+
+using namespace ez::stream;
 
 struct SubscriberItemClient {
     emb_id_t        client_id;
@@ -40,7 +42,7 @@ class PubSubImpl
         {
             if (m_fd)
             {
-                close(m_fd);
+                m_sock->close(m_fd);
             }
         }
 
@@ -289,7 +291,7 @@ class PubSubImpl
             else if (ret == 0) 
             {
                 LOGI << "socket fd = " << fd << " disconnect."; 
-                close(fd);
+                m_sock->close(fd);
                 exit(-1);
             }
             else
@@ -381,4 +383,6 @@ void PubSub::add_event(EventLoopItem &item)
 void PubSub::del_event(int fd)
 {
     m_impl->del_event(fd);
+}
+
 }

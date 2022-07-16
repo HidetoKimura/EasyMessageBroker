@@ -4,6 +4,8 @@
 #include <list>
 #include <functional>
 
+namespace ez::stream {
+
 using DispatchHandler = std::function<void(int fd)>;
 
 struct EventLoopItem 
@@ -31,19 +33,21 @@ class EventLoop
 class SocketStream
 {
     public:
-        SocketStream(std::string addr);
+        SocketStream(std::string addr, bool non_block = false);
         ~SocketStream();
         
-        int listen();
-        int accept(int listen_fd);
-        int connect();
+        int  listen();
+        int  accept(int listen_fd);
+        int  connect();
+        void close(int fd);
     
         int32_t read(int fd, void* buf, int32_t size);
         int32_t write(int fd, void* buf, int32_t size);
 
     private:
         std::string m_addr;
+        bool        m_non_block;
 };
 
-
+}
 #endif

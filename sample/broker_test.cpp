@@ -1,10 +1,11 @@
 #include <memory>
 #include <string>
 
-#include "broker.h"
+#include "emb.h"
 #include <iostream>
 
-using namespace std;
+using namespace ez::stream;
+using namespace emb;
 
 int main()
 {

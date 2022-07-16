@@ -1,14 +1,42 @@
-#ifndef __PUB_SUB_H__
-#define __PUB_SUB_H__
+#ifndef __EMB_H__
+#define __EMB_H__
 
-#include <stdint.h>
-#include <unistd.h>
-
-#include <string>
+//#include <string>
 #include <memory>
+//#include <vector>
+
+//#include <stdint.h>
+//#include <unistd.h>
 
 #include "ez_stream.h"
-#include "emb_msg.h"
+//#include "emb_msg.h"
+
+namespace emb {
+
+using namespace ez::stream;
+
+typedef uint32_t emb_id_t;
+
+class BrokerImpl;
+
+class Broker
+{
+    public:
+        Broker(std::string broker_id);
+        ~Broker();
+
+        int32_t listen(void);
+
+        void run(void);
+        void stop(void);
+
+        void add_event(EventLoopItem &item);
+        void del_event(int fd); 
+
+    private:
+        std::unique_ptr<BrokerImpl> m_impl;
+};
+
 
 using namespace std;
 
@@ -43,4 +71,5 @@ class PubSub
         std::unique_ptr<PubSubImpl> m_impl;
 };
 
+}
 #endif

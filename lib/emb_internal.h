@@ -7,7 +7,9 @@
 #define EMB_ID_NOT_USE    0
 #define EMB_ID_BROADCAST  1
 
-typedef uint32_t emb_id_t;
+namespace emb {
+
+using namespace ez::stream;
 
 typedef enum {
     // Common
@@ -76,5 +78,5 @@ struct EmbCommandItem {
     EmbHandler      handler;
 };
 
-
+}
 #endif
