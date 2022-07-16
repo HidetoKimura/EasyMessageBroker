@@ -38,10 +38,10 @@ typedef struct {
 typedef struct {
     emb_msg_header_t  header;
     int32_t           topic_len;
-    char              topic[EMB_MSG_TOPIC_MAX];
     int32_t           data_len;
-    char              data[EMB_MSG_DATA_MAX];
     int32_t           client_id_len;
+    char              topic[EMB_MSG_TOPIC_MAX];
+    char              data[EMB_MSG_DATA_MAX];
     emb_id_t          client_id;
 } emb_msg_PUBLISH_t;
 
@@ -54,8 +54,8 @@ typedef struct {
 typedef struct {
     emb_msg_header_t  header;
     int32_t           topic_len;
-    char              topic[EMB_MSG_TOPIC_MAX];
     int32_t           client_id_len;
+    char              topic[EMB_MSG_TOPIC_MAX];
     emb_id_t          client_id;
 } emb_msg_SUBACK_t;
 

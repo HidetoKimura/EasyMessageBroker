@@ -263,6 +263,14 @@ class BrokerImpl
             std::cout << "####" << std::endl;          
         }
 
+        void dump(char* buf, int len)
+        {
+            for(;len > 0; len--, buf++) {
+                printf("%02hhX ", *buf);
+            }
+            printf("\n");
+        }
+
         void read_event(int fd) 
         {
             #define READ_MAX 512
@@ -271,6 +279,7 @@ class BrokerImpl
             int ret = m_sock->read(fd, buf, sizeof buf);
             if( ret > 0 ) {
                 emb_msg_header_t*  p_msg = (emb_msg_header_t*)buf;
+                //dump(buf, ret);
 
                 for(auto it = m_dispatch_list.begin(); it != m_dispatch_list.end() ; it++) 
                 {
