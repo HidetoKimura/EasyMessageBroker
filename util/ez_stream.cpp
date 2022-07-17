@@ -252,7 +252,7 @@ int  SocketStream::accept(int listen_fd)
     return conn_sock;
 }
 
-#define SOCKET_HEAD_SIGN    0x11223344
+#define SS_MSG_HEAD_SIGN    0x11223344
 
 typedef struct {
     uint32_t    head_sign;
@@ -299,7 +299,7 @@ int32_t SocketStream::read(int fd, void* buf, int32_t size)
 
     } while(1);
 
-    if(header->head_sign != SOCKET_HEAD_SIGN)
+    if(header->head_sign != SS_MSG_HEAD_SIGN)
     {
         LOGE << "socket header was destroyed.";
         return -1;
@@ -354,7 +354,7 @@ int32_t SocketStream::write(int fd, void* buf, int32_t size)
     w_len = sizeof(header);
     p_buf = (char*)alloca(w_len);
     header = (ss_msg_t*)p_buf;
-    header->head_sign = SOCKET_HEAD_SIGN;
+    header->head_sign = SS_MSG_HEAD_SIGN;
     header->body_len = size;
 
     len = 0;
