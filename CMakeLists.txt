@@ -16,8 +16,8 @@ ADD_LIBRARY(ez_stream SHARED ${UTIL_LIST})
 ADD_LIBRARY(emb SHARED ${LIB_LIST})
 TARGET_LINK_LIBRARIES(emb ez_stream)
 
-ADD_EXECUTABLE(broker  "sample/broker_test.cpp")
+ADD_EXECUTABLE(broker  "sample/cpp/broker_test.cpp")
 TARGET_LINK_LIBRARIES(broker emb)
 
-ADD_EXECUTABLE(pubsub  "sample/pub_sub_test.cpp")
+ADD_EXECUTABLE(pubsub  "sample/cpp/pub_sub_test.cpp")
 TARGET_LINK_LIBRARIES(pubsub emb)
