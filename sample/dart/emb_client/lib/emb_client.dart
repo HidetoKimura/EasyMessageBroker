@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -162,210 +163,294 @@ const EMB_MSG_UNSUBACK_CLIENT_ID_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_UNSUBACK_SIZE =
     EMB_MSG_UNSUBACK_CLIENT_ID_LEN_SIZE + EMB_MSG_UNSUBACK_CLIENT_ID_SIZE;
 
-void start(String brokerId, Function handler) async {
-  // connect to the socket server
-  final host = InternetAddress(brokerId, type: InternetAddressType.unix);
-  final socket = await Socket.connect(host, 0);
-  print('Connected to: ${socket.remoteAddress.address}:${socket.remotePort}');
+class SubscriberItem {
+  final String topic;
+  final Function handler;
+  final int clientId;
+  SubscriberItem(this.topic, this.handler, this.clientId);
+}
 
-  // listen for responses from the server
-  socket.listen(
-    // handle data from the server
-    (Uint8List data) {
-      var offset = 0;
+class EmbClient {
+  Socket? _socket;
+  List<SubscriberItem>? _subscriberList;
+  Completer<int>? _subCompleter;
+  Completer? _unsubCompleter;
 
-      while (data.length > offset) {
-        var head = data.sublist(offset, offset + SS_MSG_SIZE);
-        var bytedata = ByteData.view(head.buffer);
-        var headSign =
-            bytedata.getUint32(SS_MSG_HEAD_SIGN_OFFSET, Endian.little);
-        var bodyLen = bytedata.getUint32(SS_MSG_BODY_LEN_OFFSET, Endian.little);
+  EmbClient() {
+    _subscriberList = [];
+  }
 
-        if (headSign != SS_MSG_HEAD_SIGN) {
-          print('bad head sign: ${headSign.toRadixString(16)}');
-          return;
-        }
+  Future<void> connect(String brokerId) async {
+    final host = InternetAddress(brokerId, type: InternetAddressType.unix);
+    final socket = await Socket.connect(host, 0);
+    print('Connected to: ${socket.remoteAddress.address}:${socket.remotePort}');
+    _socket = socket;
 
-        var body = data.sublist(offset, offset + SS_MSG_SIZE + bodyLen);
-        bytedata = ByteData.view(body.buffer);
+    return;
+  }
 
-        var type =
-            bytedata.getUint32(EMB_MSG_HEADER_TYPE_OFFSET, Endian.little);
-        var len = bytedata.getUint32(EMB_MSG_HEADER_LEN_OFFSET, Endian.little);
+  Future<int> subscribe(String topic, Function handler) async {
+    int clientId = await subscribeSync(topic);
+    _subscriberList?.add(SubscriberItem(topic, handler, clientId));
+    print("subscribe : clientId = $clientId ");
 
-        print('recv : ${headSign.toRadixString(16)},$bodyLen,$type,$len');
-        switch (type) {
-          case EMB_MSG_TYPE_PUBLISH:
-            recvPublish(body, handler);
-            break;
-          case EMB_MSG_TYPE_SUBACK:
-            recvSuback(body);
-            break;
-          case EMB_MSG_TYPE_UNSUBACK:
-            recvUnuback(body);
-            break;
-          default:
-            break;
-        }
-        offset += SS_MSG_SIZE;
-        offset += bodyLen;
+    print('_subscriberList.length = ${_subscriberList?.length}');
+
+    return clientId;
+  }
+
+  Future<int> subscribeSync(String topic) async {
+    _subCompleter = Completer<int>();
+
+    _sendSubscribe(topic);
+
+    return _subCompleter!.future;
+  }
+
+  Future<void> unsubscribe(int clientId) async {
+    await unsubscribeSync(clientId);
+
+    for (int i = 0; i < _subscriberList!.length; i++) {
+      if (_subscriberList![i].clientId == clientId) {
+        _subscriberList!.removeAt(i);
+        break;
       }
-    },
+    }
 
-    // handle errors
-    onError: (error) {
-      print(error);
-      socket.destroy();
-    },
+    print('_subscriberList.length = ${_subscriberList?.length}');
 
-    // handle server ending connection
-    onDone: () {
-      print('Server left.');
-      socket.destroy();
-    },
-  );
-
-  // send some messages to the server
-  await sendSubscribe(socket, '/signal/power');
-  await sendPublish(socket, '/signal/power', 'power_on');
-  await sendUnsubscribe(socket, 10000);
-}
-
-Future<void> sendSubscribe(Socket socket, String topic) async {
-  var message =
-      Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_SUBSCRIBE_SIZE);
-  var bytedata = ByteData.view(message.buffer);
-
-  bytedata.setUint32(SS_MSG_HEAD_SIGN_OFFSET, SS_MSG_HEAD_SIGN, Endian.little);
-  bytedata.setUint32(SS_MSG_BODY_LEN_OFFSET,
-      EMB_MSG_HEADER_SIZE + EMB_MSG_SUBSCRIBE_SIZE, Endian.little);
-  bytedata.setUint32(
-      EMB_MSG_HEADER_TYPE_OFFSET, EMB_MSG_TYPE_SUBSCRIBE, Endian.little);
-  bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
-      EMB_MSG_HEADER_SIZE + EMB_MSG_SUBSCRIBE_SIZE, Endian.little);
-
-  bytedata.setUint32(EMB_MSG_SUBSCRIBE_TOPIC_LEN_OFFSET,
-      EMB_MSG_PUBLISH_TOPIC_SIZE, Endian.little);
-
-  final List<int> codeUnits = topic.codeUnits;
-  final Uint8List unit8List = Uint8List.fromList(codeUnits);
-
-  for (var i = 0; i < unit8List.length; i++) {
-    bytedata.setUint8(EMB_MSG_SUBSCRIBE_TOPIC_OFFSET + i, unit8List[i]);
+    return;
   }
 
-  socket.add(message);
-}
+  Future<void> unsubscribeSync(int clientId) async {
+    _unsubCompleter = Completer<void>();
 
-Future<void> sendPublish(Socket socket, String topic, String data) async {
-  var message =
-      Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_PUBLISH_SIZE);
-  var bytedata = ByteData.view(message.buffer);
+    _sendUnsubscribe(clientId);
 
-  bytedata.setUint32(SS_MSG_HEAD_SIGN_OFFSET, SS_MSG_HEAD_SIGN, Endian.little);
-  bytedata.setUint32(SS_MSG_BODY_LEN_OFFSET,
-      EMB_MSG_HEADER_SIZE + EMB_MSG_PUBLISH_SIZE, Endian.little);
-  bytedata.setUint32(
-      EMB_MSG_HEADER_TYPE_OFFSET, EMB_MSG_TYPE_PUBLISH, Endian.little);
-  bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
-      EMB_MSG_HEADER_SIZE + EMB_MSG_PUBLISH_SIZE, Endian.little);
-
-  bytedata.setUint32(EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET,
-      EMB_MSG_PUBLISH_TOPIC_SIZE, Endian.little);
-  bytedata.setUint32(EMB_MSG_PUBLISH_DATA_LEN_OFFSET, EMB_MSG_PUBLISH_DATA_SIZE,
-      Endian.little);
-  bytedata.setUint32(EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET,
-      EMB_MSG_PUBLISH_CLIENT_ID_SIZE, Endian.little);
-
-  final List<int> topicCodeUnits = topic.codeUnits;
-  final Uint8List topicUint8List = Uint8List.fromList(topicCodeUnits);
-
-  for (var i = 0; i < topicUint8List.length; i++) {
-    bytedata.setUint8(EMB_MSG_PUBLISH_TOPIC_OFFSET + i, topicUint8List[i]);
+    return _unsubCompleter!.future;
   }
 
-  final List<int> dataCodeUnits = data.codeUnits;
-  final Uint8List dataUint8List = Uint8List.fromList(dataCodeUnits);
-
-  for (var i = 0; i < dataUint8List.length; i++) {
-    bytedata.setUint8(EMB_MSG_PUBLISH_DATA_OFFSET + i, dataUint8List[i]);
+  Future<void> publish(String topic, String data) async {
+    _sendPublish(topic, data);
+    return;
   }
 
-  bytedata.setUint32(
-      EMB_MSG_PUBLISH_CLIENT_ID_OFFSET, EMB_ID_BROADCAST, Endian.little);
+  Future<void> run() async {
+    // listen for responses from the server
+    _socket!.listen(
+      // handle data from the server
+      (Uint8List data) {
+        var offset = 0;
 
-  socket.add(message);
-}
+        while (data.length > offset) {
+          var head = data.sublist(offset, offset + SS_MSG_SIZE);
+          var bytedata = ByteData.view(head.buffer);
+          var headSign =
+              bytedata.getUint32(SS_MSG_HEAD_SIGN_OFFSET, Endian.little);
+          var bodyLen =
+              bytedata.getUint32(SS_MSG_BODY_LEN_OFFSET, Endian.little);
 
-Future<void> sendUnsubscribe(Socket socket, int client_id) async {
-  var message =
-      Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE);
-  var bytedata = ByteData.view(message.buffer);
+          if (headSign != SS_MSG_HEAD_SIGN) {
+            print('bad head sign: ${headSign.toRadixString(16)}');
+            return;
+          }
 
-  bytedata.setUint32(SS_MSG_HEAD_SIGN_OFFSET, SS_MSG_HEAD_SIGN, Endian.little);
-  bytedata.setUint32(SS_MSG_BODY_LEN_OFFSET,
-      EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE, Endian.little);
-  bytedata.setUint32(
-      EMB_MSG_HEADER_TYPE_OFFSET, EMB_MSG_TYPE_UNSUBSCRIBE, Endian.little);
-  bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
-      EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE, Endian.little);
+          var body = data.sublist(offset, offset + SS_MSG_SIZE + bodyLen);
+          bytedata = ByteData.view(body.buffer);
 
-  bytedata.setUint32(EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_OFFSET,
-      EMB_MSG_UNSUBSCRIBE_CLIENT_ID_SIZE, Endian.little);
-  bytedata.setUint32(
-      EMB_MSG_UNSUBSCRIBE_CLIENT_ID_OFFSET, client_id, Endian.little);
+          var type =
+              bytedata.getUint32(EMB_MSG_HEADER_TYPE_OFFSET, Endian.little);
+          var len =
+              bytedata.getUint32(EMB_MSG_HEADER_LEN_OFFSET, Endian.little);
 
-  socket.add(message);
-}
+          //print('recv : ${headSign.toRadixString(16)},$bodyLen,$type,$len');
+          switch (type) {
+            case EMB_MSG_TYPE_PUBLISH:
+              _recvPublish(body);
+              break;
+            case EMB_MSG_TYPE_SUBACK:
+              _recvSuback(body);
+              break;
+            case EMB_MSG_TYPE_UNSUBACK:
+              _recvUnuback(body);
+              break;
+            default:
+              break;
+          }
+          offset += SS_MSG_SIZE;
+          offset += bodyLen;
+        }
+      },
 
-void recvSuback(Uint8List msg) {
-  var bytedata = ByteData.view(msg.buffer);
+      // handle errors
+      onError: (error) {
+        print(error);
+        _socket!.destroy();
+      },
 
-  var topic_len =
-      bytedata.getUint32(EMB_MSG_SUBACK_TOPIC_LEN_OFFSET, Endian.little);
-  var client_id_len =
-      bytedata.getUint32(EMB_MSG_SUBACK_CLIENT_ID_LEN_OFFSET, Endian.little);
-  var client_id =
-      bytedata.getUint32(EMB_MSG_SUBACK_CLIENT_ID_OFFSET, Endian.little);
+      // handle server ending connection
+      onDone: () {
+        print('Server left.');
+        _socket!.destroy();
+      },
+    );
 
-  String topic = String.fromCharCodes(
-      msg, EMB_MSG_SUBACK_TOPIC_OFFSET, EMB_MSG_SUBACK_TOPIC_SIZE);
+    return;
+  }
 
-  print('recvSuback : $topic, $client_id');
-}
+  Future<void> _sendSubscribe(String topic) async {
+    var message =
+        Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_SUBSCRIBE_SIZE);
+    var bytedata = ByteData.view(message.buffer);
 
-void recvUnuback(Uint8List msg) {
-  var bytedata = ByteData.view(msg.buffer);
+    bytedata.setUint32(
+        SS_MSG_HEAD_SIGN_OFFSET, SS_MSG_HEAD_SIGN, Endian.little);
+    bytedata.setUint32(SS_MSG_BODY_LEN_OFFSET,
+        EMB_MSG_HEADER_SIZE + EMB_MSG_SUBSCRIBE_SIZE, Endian.little);
+    bytedata.setUint32(
+        EMB_MSG_HEADER_TYPE_OFFSET, EMB_MSG_TYPE_SUBSCRIBE, Endian.little);
+    bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
+        EMB_MSG_HEADER_SIZE + EMB_MSG_SUBSCRIBE_SIZE, Endian.little);
 
-  var client_id_len =
-      bytedata.getUint32(EMB_MSG_UNSUBACK_CLIENT_ID_LEN_OFFSET, Endian.little);
+    bytedata.setUint32(EMB_MSG_SUBSCRIBE_TOPIC_LEN_OFFSET,
+        EMB_MSG_PUBLISH_TOPIC_SIZE, Endian.little);
 
-  var client_id =
-      bytedata.getUint32(EMB_MSG_UNSUBACK_CLIENT_ID_OFFSET, Endian.little);
+    final List<int> codeUnits = topic.codeUnits;
+    final Uint8List unit8List = Uint8List.fromList(codeUnits);
 
-  print('recvUnuback : $client_id');
-}
+    for (var i = 0; i < unit8List.length; i++) {
+      bytedata.setUint8(EMB_MSG_SUBSCRIBE_TOPIC_OFFSET + i, unit8List[i]);
+    }
 
-void recvPublish(Uint8List msg, Function hanlder) {
-  var bytedata = ByteData.view(msg.buffer);
+    _socket!.add(message);
 
-  var topic_len =
-      bytedata.getUint32(EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET, Endian.little);
-  var data_len =
-      bytedata.getUint32(EMB_MSG_PUBLISH_DATA_LEN_OFFSET, Endian.little);
-  var client_id_len =
-      bytedata.getUint32(EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET, Endian.little);
+    return;
+  }
 
-  var client_id =
-      bytedata.getUint32(EMB_MSG_PUBLISH_CLIENT_ID_OFFSET, Endian.little);
+  Future<void> _sendPublish(String topic, String data) async {
+    var message =
+        Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_PUBLISH_SIZE);
+    var bytedata = ByteData.view(message.buffer);
 
-  String topic = String.fromCharCodes(
-      msg, EMB_MSG_PUBLISH_TOPIC_OFFSET, EMB_MSG_PUBLISH_TOPIC_SIZE);
+    bytedata.setUint32(
+        SS_MSG_HEAD_SIGN_OFFSET, SS_MSG_HEAD_SIGN, Endian.little);
+    bytedata.setUint32(SS_MSG_BODY_LEN_OFFSET,
+        EMB_MSG_HEADER_SIZE + EMB_MSG_PUBLISH_SIZE, Endian.little);
+    bytedata.setUint32(
+        EMB_MSG_HEADER_TYPE_OFFSET, EMB_MSG_TYPE_PUBLISH, Endian.little);
+    bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
+        EMB_MSG_HEADER_SIZE + EMB_MSG_PUBLISH_SIZE, Endian.little);
 
-  String data = String.fromCharCodes(
-      msg, EMB_MSG_PUBLISH_DATA_OFFSET, EMB_MSG_PUBLISH_DATA_SIZE);
+    bytedata.setUint32(EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET,
+        EMB_MSG_PUBLISH_TOPIC_SIZE, Endian.little);
+    bytedata.setUint32(EMB_MSG_PUBLISH_DATA_LEN_OFFSET,
+        EMB_MSG_PUBLISH_DATA_SIZE, Endian.little);
+    bytedata.setUint32(EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET,
+        EMB_MSG_PUBLISH_CLIENT_ID_SIZE, Endian.little);
 
-  print('recvPublish : $topic, $data, $client_id');
+    final List<int> topicCodeUnits = topic.codeUnits;
+    final Uint8List topicUint8List = Uint8List.fromList(topicCodeUnits);
 
-  hanlder(topic, data);
+    for (var i = 0; i < topicUint8List.length; i++) {
+      bytedata.setUint8(EMB_MSG_PUBLISH_TOPIC_OFFSET + i, topicUint8List[i]);
+    }
+
+    final List<int> dataCodeUnits = data.codeUnits;
+    final Uint8List dataUint8List = Uint8List.fromList(dataCodeUnits);
+
+    for (var i = 0; i < dataUint8List.length; i++) {
+      bytedata.setUint8(EMB_MSG_PUBLISH_DATA_OFFSET + i, dataUint8List[i]);
+    }
+
+    bytedata.setUint32(
+        EMB_MSG_PUBLISH_CLIENT_ID_OFFSET, EMB_ID_BROADCAST, Endian.little);
+
+    _socket!.add(message);
+
+    return;
+  }
+
+  Future<void> _sendUnsubscribe(int clientId) async {
+    var message =
+        Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE);
+    var bytedata = ByteData.view(message.buffer);
+
+    bytedata.setUint32(
+        SS_MSG_HEAD_SIGN_OFFSET, SS_MSG_HEAD_SIGN, Endian.little);
+    bytedata.setUint32(SS_MSG_BODY_LEN_OFFSET,
+        EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE, Endian.little);
+    bytedata.setUint32(
+        EMB_MSG_HEADER_TYPE_OFFSET, EMB_MSG_TYPE_UNSUBSCRIBE, Endian.little);
+    bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
+        EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE, Endian.little);
+
+    bytedata.setUint32(EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_OFFSET,
+        EMB_MSG_UNSUBSCRIBE_CLIENT_ID_SIZE, Endian.little);
+    bytedata.setUint32(
+        EMB_MSG_UNSUBSCRIBE_CLIENT_ID_OFFSET, clientId, Endian.little);
+
+    _socket!.add(message);
+
+    return;
+  }
+
+  void _recvSuback(Uint8List msg) {
+    var bytedata = ByteData.view(msg.buffer);
+
+    var topic_len =
+        bytedata.getUint32(EMB_MSG_SUBACK_TOPIC_LEN_OFFSET, Endian.little);
+    var client_id_len =
+        bytedata.getUint32(EMB_MSG_SUBACK_CLIENT_ID_LEN_OFFSET, Endian.little);
+    var client_id =
+        bytedata.getUint32(EMB_MSG_SUBACK_CLIENT_ID_OFFSET, Endian.little);
+
+    String topic = String.fromCharCodes(
+        msg, EMB_MSG_SUBACK_TOPIC_OFFSET, EMB_MSG_SUBACK_TOPIC_SIZE);
+
+    print('_recvSuback : $topic, $client_id');
+
+    _subCompleter!.complete(client_id);
+  }
+
+  void _recvUnuback(Uint8List msg) {
+    var bytedata = ByteData.view(msg.buffer);
+
+    var client_id_len = bytedata.getUint32(
+        EMB_MSG_UNSUBACK_CLIENT_ID_LEN_OFFSET, Endian.little);
+
+    var client_id =
+        bytedata.getUint32(EMB_MSG_UNSUBACK_CLIENT_ID_OFFSET, Endian.little);
+
+    print('_recvUnuback : $client_id');
+
+    _unsubCompleter!.complete();
+  }
+
+  void _recvPublish(Uint8List msg) {
+    var bytedata = ByteData.view(msg.buffer);
+
+    var topic_len =
+        bytedata.getUint32(EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET, Endian.little);
+    var data_len =
+        bytedata.getUint32(EMB_MSG_PUBLISH_DATA_LEN_OFFSET, Endian.little);
+    var client_id_len =
+        bytedata.getUint32(EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET, Endian.little);
+
+    var client_id =
+        bytedata.getUint32(EMB_MSG_PUBLISH_CLIENT_ID_OFFSET, Endian.little);
+
+    String topic = String.fromCharCodes(
+        msg, EMB_MSG_PUBLISH_TOPIC_OFFSET, EMB_MSG_PUBLISH_TOPIC_SIZE);
+
+    String data = String.fromCharCodes(
+        msg, EMB_MSG_PUBLISH_DATA_OFFSET, EMB_MSG_PUBLISH_DATA_SIZE);
+
+    print('_recvPublish : $topic, $data, $client_id');
+
+    _subscriberList?.forEach((it) {
+      if (it.clientId == client_id) {
+        it.handler(topic, data);
+      }
+    });
+  }
 }
