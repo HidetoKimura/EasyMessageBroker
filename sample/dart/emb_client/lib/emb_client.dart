@@ -66,10 +66,10 @@ const EMB_MSG_HEADER_SIZE = EMB_MSG_HEADER_TYPE_SIZE + EMB_MSG_HEADER_LEN_SIZE;
 //    emb_msg_header_t  header;
 //    int32_t           topic_len;
 //    int32_t           data_len;
-//    int32_t           client_id_len;
+//    int32_t           subscription_id_len;
 //    char              topic[EMB_MSG_TOPIC_MAX];
 //    char              data[EMB_MSG_DATA_MAX];
-//    emb_id_t          client_id;
+//    emb_id_t          subscription_id;
 //} emb_msg_PUBLISH_t;
 const EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET =
     EMB_MSG_HEADER_LEN_OFFSET + EMB_MSG_HEADER_LEN_SIZE;
@@ -77,24 +77,24 @@ const EMB_MSG_PUBLISH_TOPIC_LEN_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_PUBLISH_DATA_LEN_OFFSET =
     EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET + EMB_MSG_PUBLISH_TOPIC_LEN_SIZE;
 const EMB_MSG_PUBLISH_DATA_LEN_SIZE = MSG_UINT32_SIZE;
-const EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET =
+const EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_OFFSET =
     EMB_MSG_PUBLISH_DATA_LEN_OFFSET + EMB_MSG_PUBLISH_DATA_LEN_SIZE;
-const EMB_MSG_PUBLISH_CLIENT_ID_LEN_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_PUBLISH_TOPIC_OFFSET =
-    EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET + EMB_MSG_PUBLISH_CLIENT_ID_LEN_SIZE;
+    EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_OFFSET + EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_SIZE;
 const EMB_MSG_PUBLISH_TOPIC_SIZE = EMB_MSG_TOPIC_MAX;
 const EMB_MSG_PUBLISH_DATA_OFFSET =
     EMB_MSG_PUBLISH_TOPIC_OFFSET + EMB_MSG_PUBLISH_TOPIC_SIZE;
 const EMB_MSG_PUBLISH_DATA_SIZE = EMB_MSG_DATA_MAX;
-const EMB_MSG_PUBLISH_CLIENT_ID_OFFSET =
+const EMB_MSG_PUBLISH_SUBSCRIPTION_ID_OFFSET =
     EMB_MSG_PUBLISH_DATA_OFFSET + EMB_MSG_PUBLISH_DATA_SIZE;
-const EMB_MSG_PUBLISH_CLIENT_ID_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_PUBLISH_SUBSCRIPTION_ID_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_PUBLISH_SIZE = EMB_MSG_PUBLISH_TOPIC_LEN_SIZE +
     EMB_MSG_PUBLISH_DATA_LEN_SIZE +
-    EMB_MSG_PUBLISH_CLIENT_ID_LEN_SIZE +
+    EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_SIZE +
     EMB_MSG_PUBLISH_TOPIC_SIZE +
     EMB_MSG_PUBLISH_DATA_SIZE +
-    EMB_MSG_PUBLISH_CLIENT_ID_SIZE;
+    EMB_MSG_PUBLISH_SUBSCRIPTION_ID_SIZE;
 
 //typedef struct {
 //    emb_msg_header_t  header;
@@ -113,61 +113,61 @@ const EMB_MSG_SUBSCRIBE_SIZE =
 //typedef struct {
 //    emb_msg_header_t  header;
 //    int32_t           topic_len;
-//    int32_t           client_id_len;
+//    int32_t           subscription_id_len;
 //    char              topic[EMB_MSG_TOPIC_MAX];
-//    emb_id_t          client_id;
+//    emb_id_t          subscription_id;
 //} emb_msg_SUBACK_t;
 const EMB_MSG_SUBACK_TOPIC_LEN_OFFSET =
     EMB_MSG_HEADER_LEN_OFFSET + EMB_MSG_HEADER_LEN_SIZE;
 const EMB_MSG_SUBACK_TOPIC_LEN_SIZE = MSG_UINT32_SIZE;
-const EMB_MSG_SUBACK_CLIENT_ID_LEN_OFFSET =
+const EMB_MSG_SUBACK_SUBSCRIPTION_ID_LEN_OFFSET =
     EMB_MSG_SUBACK_TOPIC_LEN_OFFSET + EMB_MSG_SUBACK_TOPIC_LEN_SIZE;
-const EMB_MSG_SUBACK_CLIENT_ID_LEN_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_SUBACK_SUBSCRIPTION_ID_LEN_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_SUBACK_TOPIC_OFFSET =
-    EMB_MSG_SUBACK_CLIENT_ID_LEN_OFFSET + EMB_MSG_SUBACK_CLIENT_ID_LEN_SIZE;
+    EMB_MSG_SUBACK_SUBSCRIPTION_ID_LEN_OFFSET + EMB_MSG_SUBACK_SUBSCRIPTION_ID_LEN_SIZE;
 const EMB_MSG_SUBACK_TOPIC_SIZE = EMB_MSG_TOPIC_MAX;
-const EMB_MSG_SUBACK_CLIENT_ID_OFFSET =
+const EMB_MSG_SUBACK_SUBSCRIPTION_ID_OFFSET =
     EMB_MSG_SUBACK_TOPIC_OFFSET + EMB_MSG_SUBACK_TOPIC_SIZE;
-const EMB_MSG_SUBACK_CLIENT_ID_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_SUBACK_SUBSCRIPTION_ID_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_SUBACK_SIZE = EMB_MSG_SUBACK_TOPIC_LEN_SIZE +
-    EMB_MSG_SUBACK_CLIENT_ID_LEN_SIZE +
+    EMB_MSG_SUBACK_SUBSCRIPTION_ID_LEN_SIZE +
     EMB_MSG_SUBACK_TOPIC_SIZE +
-    EMB_MSG_SUBACK_CLIENT_ID_SIZE;
+    EMB_MSG_SUBACK_SUBSCRIPTION_ID_SIZE;
 
 //typedef struct {
 //    emb_msg_header_t  header;
-//    int32_t           client_id_len;
-//    emb_id_t          client_id;
+//    int32_t           subscription_id_len;
+//    emb_id_t          subscription_id;
 //} emb_msg_UNSUBSCRIBE_t;
-const EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_OFFSET =
+const EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_LEN_OFFSET =
     EMB_MSG_HEADER_LEN_OFFSET + EMB_MSG_HEADER_LEN_SIZE;
-const EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_SIZE = MSG_UINT32_SIZE;
-const EMB_MSG_UNSUBSCRIBE_CLIENT_ID_OFFSET =
-    EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_OFFSET +
-        EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_SIZE;
-const EMB_MSG_UNSUBSCRIBE_CLIENT_ID_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_LEN_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_OFFSET =
+    EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_LEN_OFFSET +
+        EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_LEN_SIZE;
+const EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_UNSUBSCRIBE_SIZE =
-    EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_SIZE + EMB_MSG_UNSUBSCRIBE_CLIENT_ID_SIZE;
+    EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_LEN_SIZE + EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_SIZE;
 
 //typedef struct {
 //    emb_msg_header_t  header;
-//    int32_t           client_id_len;
-//    emb_id_t          client_id;
+//    int32_t           subscription_id_len;
+//    emb_id_t          subscription_id;
 //} emb_msg_UNSUBACK_t;
-const EMB_MSG_UNSUBACK_CLIENT_ID_LEN_OFFSET =
+const EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_LEN_OFFSET =
     EMB_MSG_HEADER_LEN_OFFSET + EMB_MSG_HEADER_LEN_SIZE;
-const EMB_MSG_UNSUBACK_CLIENT_ID_LEN_SIZE = MSG_UINT32_SIZE;
-const EMB_MSG_UNSUBACK_CLIENT_ID_OFFSET =
-    EMB_MSG_UNSUBACK_CLIENT_ID_LEN_OFFSET + EMB_MSG_UNSUBACK_CLIENT_ID_LEN_SIZE;
-const EMB_MSG_UNSUBACK_CLIENT_ID_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_LEN_SIZE = MSG_UINT32_SIZE;
+const EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_OFFSET =
+    EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_LEN_OFFSET + EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_LEN_SIZE;
+const EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_SIZE = MSG_UINT32_SIZE;
 const EMB_MSG_UNSUBACK_SIZE =
-    EMB_MSG_UNSUBACK_CLIENT_ID_LEN_SIZE + EMB_MSG_UNSUBACK_CLIENT_ID_SIZE;
+    EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_LEN_SIZE + EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_SIZE;
 
 class SubscriberItem {
   final String topic;
   final Function handler;
-  final int clientId;
-  SubscriberItem(this.topic, this.handler, this.clientId);
+  final int subscriptionId;
+  SubscriberItem(this.topic, this.handler, this.subscriptionId);
 }
 
 class EmbClient {
@@ -190,13 +190,13 @@ class EmbClient {
   }
 
   Future<int> subscribe(String topic, Function handler) async {
-    int clientId = await subscribeSync(topic);
-    _subscriberList?.add(SubscriberItem(topic, handler, clientId));
-    print("subscribe : clientId = $clientId ");
+    int subscriptionId = await subscribeSync(topic);
+    _subscriberList?.add(SubscriberItem(topic, handler, subscriptionId));
+    print("subscribe : subscriptionId = $subscriptionId ");
 
     print('_subscriberList.length = ${_subscriberList?.length}');
 
-    return clientId;
+    return subscriptionId;
   }
 
   Future<int> subscribeSync(String topic) async {
@@ -207,11 +207,11 @@ class EmbClient {
     return _subCompleter!.future;
   }
 
-  Future<void> unsubscribe(int clientId) async {
-    await unsubscribeSync(clientId);
+  Future<void> unsubscribe(int subscriptionId) async {
+    await unsubscribeSync(subscriptionId);
 
     for (int i = 0; i < _subscriberList!.length; i++) {
-      if (_subscriberList![i].clientId == clientId) {
+      if (_subscriberList![i].subscriptionId == subscriptionId) {
         _subscriberList!.removeAt(i);
         break;
       }
@@ -222,10 +222,10 @@ class EmbClient {
     return;
   }
 
-  Future<void> unsubscribeSync(int clientId) async {
+  Future<void> unsubscribeSync(int subscriptionId) async {
     _unsubCompleter = Completer<void>();
 
-    _sendUnsubscribe(clientId);
+    _sendUnsubscribe(subscriptionId);
 
     return _unsubCompleter!.future;
   }
@@ -345,8 +345,8 @@ class EmbClient {
         EMB_MSG_PUBLISH_TOPIC_SIZE, Endian.little);
     bytedata.setUint32(EMB_MSG_PUBLISH_DATA_LEN_OFFSET,
         EMB_MSG_PUBLISH_DATA_SIZE, Endian.little);
-    bytedata.setUint32(EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET,
-        EMB_MSG_PUBLISH_CLIENT_ID_SIZE, Endian.little);
+    bytedata.setUint32(EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_OFFSET,
+        EMB_MSG_PUBLISH_SUBSCRIPTION_ID_SIZE, Endian.little);
 
     final List<int> topicCodeUnits = topic.codeUnits;
     final Uint8List topicUint8List = Uint8List.fromList(topicCodeUnits);
@@ -363,14 +363,14 @@ class EmbClient {
     }
 
     bytedata.setUint32(
-        EMB_MSG_PUBLISH_CLIENT_ID_OFFSET, EMB_ID_BROADCAST, Endian.little);
+        EMB_MSG_PUBLISH_SUBSCRIPTION_ID_OFFSET, EMB_ID_BROADCAST, Endian.little);
 
     _socket!.add(message);
 
     return;
   }
 
-  Future<void> _sendUnsubscribe(int clientId) async {
+  Future<void> _sendUnsubscribe(int subscriptionId) async {
     var message =
         Uint8List(SS_MSG_SIZE + EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE);
     var bytedata = ByteData.view(message.buffer);
@@ -384,10 +384,10 @@ class EmbClient {
     bytedata.setUint32(EMB_MSG_HEADER_LEN_OFFSET,
         EMB_MSG_HEADER_SIZE + EMB_MSG_UNSUBSCRIBE_SIZE, Endian.little);
 
-    bytedata.setUint32(EMB_MSG_UNSUBSCRIBE_CLIENT_ID_LEN_OFFSET,
-        EMB_MSG_UNSUBSCRIBE_CLIENT_ID_SIZE, Endian.little);
+    bytedata.setUint32(EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_LEN_OFFSET,
+        EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_SIZE, Endian.little);
     bytedata.setUint32(
-        EMB_MSG_UNSUBSCRIBE_CLIENT_ID_OFFSET, clientId, Endian.little);
+        EMB_MSG_UNSUBSCRIBE_SUBSCRIPTION_ID_OFFSET, subscriptionId, Endian.little);
 
     _socket!.add(message);
 
@@ -399,29 +399,29 @@ class EmbClient {
 
     var topic_len =
         bytedata.getUint32(EMB_MSG_SUBACK_TOPIC_LEN_OFFSET, Endian.little);
-    var client_id_len =
-        bytedata.getUint32(EMB_MSG_SUBACK_CLIENT_ID_LEN_OFFSET, Endian.little);
-    var client_id =
-        bytedata.getUint32(EMB_MSG_SUBACK_CLIENT_ID_OFFSET, Endian.little);
+    var subscription_id_len =
+        bytedata.getUint32(EMB_MSG_SUBACK_SUBSCRIPTION_ID_LEN_OFFSET, Endian.little);
+    var subscription_id =
+        bytedata.getUint32(EMB_MSG_SUBACK_SUBSCRIPTION_ID_OFFSET, Endian.little);
 
     String topic = String.fromCharCodes(
         msg, EMB_MSG_SUBACK_TOPIC_OFFSET, EMB_MSG_SUBACK_TOPIC_SIZE);
 
-    print('_recvSuback : $topic, $client_id');
+    print('_recvSuback : $topic, $subscription_id');
 
-    _subCompleter!.complete(client_id);
+    _subCompleter!.complete(subscription_id);
   }
 
   void _recvUnuback(Uint8List msg) {
     var bytedata = ByteData.view(msg.buffer);
 
-    var client_id_len = bytedata.getUint32(
-        EMB_MSG_UNSUBACK_CLIENT_ID_LEN_OFFSET, Endian.little);
+    var subscription_id_len = bytedata.getUint32(
+        EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_LEN_OFFSET, Endian.little);
 
-    var client_id =
-        bytedata.getUint32(EMB_MSG_UNSUBACK_CLIENT_ID_OFFSET, Endian.little);
+    var subscription_id =
+        bytedata.getUint32(EMB_MSG_UNSUBACK_SUBSCRIPTION_ID_OFFSET, Endian.little);
 
-    print('_recvUnuback : $client_id');
+    print('_recvUnuback : $subscription_id');
 
     _unsubCompleter!.complete();
   }
@@ -433,11 +433,11 @@ class EmbClient {
         bytedata.getUint32(EMB_MSG_PUBLISH_TOPIC_LEN_OFFSET, Endian.little);
     var data_len =
         bytedata.getUint32(EMB_MSG_PUBLISH_DATA_LEN_OFFSET, Endian.little);
-    var client_id_len =
-        bytedata.getUint32(EMB_MSG_PUBLISH_CLIENT_ID_LEN_OFFSET, Endian.little);
+    var subscription_id_len =
+        bytedata.getUint32(EMB_MSG_PUBLISH_SUBSCRIPTION_ID_LEN_OFFSET, Endian.little);
 
-    var client_id =
-        bytedata.getUint32(EMB_MSG_PUBLISH_CLIENT_ID_OFFSET, Endian.little);
+    var subscription_id =
+        bytedata.getUint32(EMB_MSG_PUBLISH_SUBSCRIPTION_ID_OFFSET, Endian.little);
 
     String topic = String.fromCharCodes(
         msg, EMB_MSG_PUBLISH_TOPIC_OFFSET, EMB_MSG_PUBLISH_TOPIC_SIZE);
@@ -445,10 +445,10 @@ class EmbClient {
     String data = String.fromCharCodes(
         msg, EMB_MSG_PUBLISH_DATA_OFFSET, EMB_MSG_PUBLISH_DATA_SIZE);
 
-    print('_recvPublish : $topic, $data, $client_id');
+    print('_recvPublish : $topic, $data, $subscription_id');
 
     _subscriberList?.forEach((it) {
-      if (it.clientId == client_id) {
+      if (it.subscriptionId == subscription_id) {
         it.handler(topic, data);
       }
     });

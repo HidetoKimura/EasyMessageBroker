@@ -39,10 +39,10 @@ typedef struct {
     emb_msg_header_t  header;
     int32_t           topic_len;
     int32_t           data_len;
-    int32_t           client_id_len;
+    int32_t           subscription_id_len;
     char              topic[EMB_MSG_TOPIC_MAX];
-    char              data[EMB_MSG_DATA_MAX];
-    emb_id_t          client_id;
+    uint8_t           data[EMB_MSG_DATA_MAX];
+    emb_id_t          subscription_id;
 } emb_msg_PUBLISH_t;
 
 typedef struct {
@@ -54,21 +54,21 @@ typedef struct {
 typedef struct {
     emb_msg_header_t  header;
     int32_t           topic_len;
-    int32_t           client_id_len;
+    int32_t           subscription_id_len;
     char              topic[EMB_MSG_TOPIC_MAX];
-    emb_id_t          client_id;
+    emb_id_t          subscription_id;
 } emb_msg_SUBACK_t;
 
 typedef struct {
     emb_msg_header_t  header;
-    int32_t           client_id_len;
-    emb_id_t          client_id;
+    int32_t           subscription_id_len;
+    emb_id_t          subscription_id;
 } emb_msg_UNSUBSCRIBE_t;
 
 typedef struct {
     emb_msg_header_t  header;
-    int32_t           client_id_len;
-    emb_id_t          client_id;
+    int32_t           subscription_id_len;
+    emb_id_t          subscription_id;
 } emb_msg_UNSUBACK_t;
 
 using EmbHandler = std::function<void(int fd, void* msg)>;

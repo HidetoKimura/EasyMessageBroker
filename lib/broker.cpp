@@ -22,7 +22,7 @@ namespace emb {
 using namespace ez::stream;
 
 typedef struct {
-    emb_id_t        client_id;
+    emb_id_t        subscription_id;
     std::string     topic;
     int             fd;
 } SuscribeItemBroker;
@@ -34,6 +34,7 @@ class BrokerImpl
           : m_serverFd(-1)
           , m_clients()
           , m_subscribers()
+          , m_last_subscription_id(10000)
         {
             m_loop = std::make_unique<EventLoop>();
             m_sock = std::make_unique<SocketStream>(broker_id);
@@ -79,7 +80,7 @@ class BrokerImpl
                 }
 
                 // TODO only string. it should binary.
-                std::string data(msg->data);
+                std::string data((char*)msg->data);
 
                 if((int32_t)data.size() > msg->data_len - 1 )
                 {
@@ -119,10 +120,11 @@ class BrokerImpl
                 SuscribeItemBroker item;
                 item.topic = topic;
                 item.fd = fd;
-                item.client_id = 10000 + m_subscribers.size();
+                item.subscription_id = m_last_subscription_id;
+                m_last_subscription_id++;
                 m_subscribers.push_back(item);
 
-                send_suback(fd, topic, item.client_id);
+                send_suback(fd, topic, item.subscription_id);
                 
                 dump_subcribes();
                 return;
@@ -135,19 +137,19 @@ class BrokerImpl
                 emb_msg_UNSUBSCRIBE_t* msg = (emb_msg_UNSUBSCRIBE_t*)recv_msg;
 
                 if( (msg->header.len    != sizeof(emb_msg_UNSUBSCRIBE_t) ) ||
-                    (msg->client_id_len != sizeof(msg->client_id)) )
+                    (msg->subscription_id_len != sizeof(msg->subscription_id)) )
                 {
                     LOGE << "length error";
                     return;                    
                 }
 
-                LOGI << "event =" << msg->header.type << ", clinet_id =" << msg->client_id;
+                LOGI << "event =" << msg->header.type << ", clinet_id =" << msg->subscription_id;
                 
-                send_unsuback(fd, msg->client_id);
+                send_unsuback(fd, msg->subscription_id);
 
                 for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
                 {
-                    if((*it).client_id == msg->client_id) {
+                    if((*it).subscription_id == msg->subscription_id) {
                         it = m_subscribers.erase(it);
                     }
                     else {
@@ -190,7 +192,7 @@ class BrokerImpl
 
         }
 
-        void send_suback(int fd, std::string topic, uint32_t client_id)
+        void send_suback(int fd, std::string topic, uint32_t subscription_id)
         {
             emb_msg_SUBACK_t msg;
 
@@ -202,8 +204,8 @@ class BrokerImpl
             memset(msg.topic, 0, msg.topic_len);
             strncpy(msg.topic, topic.c_str(), topic.size()); 
 
-            msg.client_id_len = sizeof(msg.client_id);
-            msg.client_id = client_id;
+            msg.subscription_id_len = sizeof(msg.subscription_id);
+            msg.subscription_id = subscription_id;
 
             msg.header.type = EMB_MSG_TYPE_SUBACK;
             msg.header.len = sizeof(msg);
@@ -216,12 +218,12 @@ class BrokerImpl
             return;
         }
 
-        void send_unsuback(int fd, uint32_t client_id)
+        void send_unsuback(int fd, uint32_t subscription_id)
         {
             emb_msg_UNSUBACK_t msg;
 
-            msg.client_id_len = sizeof(msg.client_id);
-            msg.client_id = client_id;
+            msg.subscription_id_len = sizeof(msg.subscription_id);
+            msg.subscription_id = subscription_id;
 
             msg.header.type = EMB_MSG_TYPE_UNSUBACK;
             msg.header.len = sizeof(msg);
@@ -237,15 +239,15 @@ class BrokerImpl
         void send_publish(emb_msg_PUBLISH_t *msg)
         {
             std::string topic(msg->topic);
-            emb_id_t tmp_client_id = msg->client_id;
+            emb_id_t tmp_subscription_id = msg->subscription_id;
 
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++)
             {
                 if((*it).topic != topic) continue;
-                if(tmp_client_id != EMB_ID_BROADCAST) {
-                    if((*it).client_id != tmp_client_id) continue;
+                if(tmp_subscription_id != EMB_ID_BROADCAST) {
+                    if((*it).subscription_id != tmp_subscription_id) continue;
                 }
-                msg->client_id = (*it).client_id;
+                msg->subscription_id = (*it).subscription_id;
                 int w_len = msg->header.len;
                 int ret = m_sock->write((*it).fd, msg, w_len);
                 if(ret != w_len) {
@@ -258,7 +260,7 @@ class BrokerImpl
         {
             std::cout << "#### broker subscribers" << std::endl;          
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
-                std::cout << (*it).client_id << ", " << (*it).topic << ", " << (*it).fd << std::endl;          
+                std::cout << (*it).subscription_id << ", " << (*it).topic << ", " << (*it).fd << std::endl;          
             }
             std::cout << "####" << std::endl;          
         }
@@ -319,7 +321,8 @@ class BrokerImpl
         std::unique_ptr<SocketStream>   m_sock;
         std::vector<EmbCommandItem>     m_dispatch_list;
         std::list<SuscribeItemBroker>   m_subscribers;
-        std::string m_broker_id;
+        std::string                     m_broker_id;
+        int32_t                         m_last_subscription_id;
 };
 
 Broker::Broker(std::string broker_id)

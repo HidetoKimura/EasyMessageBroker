@@ -57,7 +57,7 @@ class PubSub
         int32_t connect(void);
 
         emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler);
-        void unsubscribe(emb_id_t client_id);
+        void unsubscribe(emb_id_t subscription_id);
         void publish(std::string topic, void* buf , int32_t len);
         void publish(std::string topic, void* buf , int32_t len, emb_id_t to_id);
 
