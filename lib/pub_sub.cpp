@@ -28,13 +28,13 @@ struct SubscriberItemClient {
 class PubSubImpl
 {
     public:
-        PubSubImpl(std::string broker_id)
+        PubSubImpl()
             : m_fd(-1)
             , m_last_subscription_id(EMB_ID_NOT_USE)
             , m_subscribers()
         {
             m_loop = std::make_unique<EventLoop>();
-            m_sock = std::make_unique<SocketStream>(broker_id);
+            m_sock = std::make_unique<SocketStream>();
             
         }
 
@@ -46,11 +46,12 @@ class PubSubImpl
             }
         }
 
-        int32_t connect()
+        int32_t connect(std::string broker_id, ConnectionHandler on_conn)
         {
             int32_t ret;
             
-            ret = m_sock->connect();
+            
+            ret = m_sock->connect(broker_id);
             if(ret < 0) 
             {
                 LOGE << "connect failed: ";
@@ -58,6 +59,10 @@ class PubSubImpl
             }
             
             m_fd = ret;
+            if(on_conn != nullptr)
+            {
+                on_conn(m_fd);
+            }
 
             EmbCommandItem command_item;
             command_item.type = EMB_MSG_TYPE_PUBLISH;
@@ -331,18 +336,18 @@ class PubSubImpl
         std::vector<EmbCommandItem>         m_dispatch_list;
 };
 
-PubSub::PubSub(std::string broker_id)
+PubSub::PubSub()
 {
-    m_impl = std::make_unique<PubSubImpl>(broker_id);
+    m_impl = std::make_unique<PubSubImpl>();
 }
 
 PubSub::~PubSub()
 {
 }
 
-int32_t PubSub::connect()
+int32_t PubSub::connect(std::string broker_id,  ConnectionHandler on_conn)
 {
-    return m_impl->connect();
+    return m_impl->connect(broker_id, on_conn);
 }
 
 emb_id_t PubSub::subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler)
@@ -383,6 +388,11 @@ void PubSub::add_event(EventLoopItem &item)
 void PubSub::del_event(int fd)
 {
     m_impl->del_event(fd);
+}
+
+void PubSub::read_event(int fd)
+{
+    m_impl->read_event(fd);
 }
 
 }

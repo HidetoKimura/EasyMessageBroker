@@ -16,19 +16,22 @@ namespace emb {
 using namespace ez::stream;
 
 typedef uint32_t emb_id_t;
+using ConnectionHandler = std::function<void(int new_fd)>;
 
 class BrokerImpl;
 
 class Broker
 {
     public:
-        Broker(std::string broker_id);
+        Broker();
         ~Broker();
 
-        int32_t listen(void);
+        int32_t listen(std::string broker_id, ConnectionHandler on_conn = nullptr);
 
         void run(void);
         void stop(void);
+
+        void read_event(int fd);
 
         void add_event(EventLoopItem &item);
         void del_event(int fd); 
@@ -51,10 +54,10 @@ class SubscribeHandler
 class PubSub 
 {
     public:
-        PubSub(std::string broker_id);
+        PubSub();
         ~PubSub();
 
-        int32_t connect(void);
+        int32_t connect(std::string broker_id, ConnectionHandler on_conn = nullptr);
 
         emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler);
         void unsubscribe(emb_id_t subscription_id);
@@ -63,6 +66,8 @@ class PubSub
 
         void run(void);
         void stop(void);
+
+        void read_event(int fd);
 
         void add_event(EventLoopItem &item);
         void del_event(int fd); 

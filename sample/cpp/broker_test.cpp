@@ -9,9 +9,10 @@ using namespace emb;
 
 int main()
 {
-    std::unique_ptr<Broker> broker = std::make_unique<Broker>("/tmp/test");
+    std::unique_ptr<Broker> broker = std::make_unique<Broker>();
 
-    auto ret = broker->listen();
+    auto ret = broker->listen("/tmp/test", 
+                [](int new_fd){ std::cout << "new broker fd = " << new_fd << std::endl; });
     if(ret < 0) {
         std::cout << "listen failed:" << std::endl;
         return -1;

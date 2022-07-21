@@ -33,19 +33,18 @@ class EventLoop
 class SocketStream
 {
     public:
-        SocketStream(std::string addr, bool non_block = false);
+        SocketStream(bool non_block = false);
         ~SocketStream();
         
-        int  listen();
+        int  listen(std::string addr);
         int  accept(int listen_fd);
-        int  connect();
+        int  connect(std::string addr);
         void close(int fd);
     
         int32_t read(int fd, void* buf, int32_t size);
         int32_t write(int fd, void* buf, int32_t size);
 
     private:
-        std::string m_addr;
         bool        m_non_block;
 };
 

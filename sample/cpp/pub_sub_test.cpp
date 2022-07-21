@@ -87,7 +87,7 @@ static void parse_command(char* s, std::function<void(int argc, char* argv[])> h
 
 int main(int argc, char *argv[])
 {
-    std::unique_ptr<PubSub> pubsub = std::make_unique<PubSub>("/tmp/test");
+    std::unique_ptr<PubSub> pubsub = std::make_unique<PubSub>();
 
     if( argc != 2)
     {
@@ -99,7 +99,8 @@ int main(int argc, char *argv[])
         usage(argv[1]);
     }
 
-    auto ret = pubsub->connect();
+    auto ret = pubsub->connect("/tmp/test", 
+                [](int new_fd){ std::cout << "new client fd = " << new_fd << std::endl; });
     if(ret < 0) {
         std::cout << "connect failed:: " << strerror(errno) << std::endl;
         return -1;

@@ -117,9 +117,8 @@ void EventLoop::stop(void)
     m_running = false;
 }
 
-SocketStream::SocketStream(std::string addr, bool non_block)
+SocketStream::SocketStream(bool non_block)
 {
-    m_addr = addr;
     m_non_block = non_block;
 }
 
@@ -127,7 +126,7 @@ SocketStream::~SocketStream()
 {
 }
 
-int SocketStream::listen(void)
+int SocketStream::listen(std::string addr_name)
 {
     #define MAX_LISTEN  128
     int ret, fd;
@@ -142,10 +141,10 @@ int SocketStream::listen(void)
     sockaddr_un addr;
     ::bzero(&addr, sizeof addr);
     addr.sun_family = AF_UNIX;
-    ::strcpy(addr.sun_path, m_addr.c_str());
+    ::strcpy(addr.sun_path, addr_name.c_str());
 
     // delete file that going to bind
-    WRAP_SYSCALL(ret, ::unlink(m_addr.c_str()));
+    WRAP_SYSCALL(ret, ::unlink(addr_name.c_str()));
 
     WRAP_SYSCALL(ret, ::bind(fd, (struct sockaddr*)&addr, sizeof addr));
     if (ret < 0)
@@ -182,7 +181,7 @@ int SocketStream::listen(void)
 
 }
 
-int SocketStream::connect(void)
+int SocketStream::connect(std::string addr_name)
 {
     int ret, fd;
 
@@ -197,7 +196,7 @@ int SocketStream::connect(void)
     ::bzero(&addr, sizeof addr);
 
     addr.sun_family = AF_UNIX;
-    ::strcpy(addr.sun_path, m_addr.c_str());
+    ::strcpy(addr.sun_path, addr_name.c_str());
 
     WRAP_SYSCALL(ret, ::connect(fd, (struct sockaddr*)&addr, sizeof addr));
     if (ret < 0)

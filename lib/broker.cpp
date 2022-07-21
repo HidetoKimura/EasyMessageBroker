@@ -30,14 +30,14 @@ typedef struct {
 class BrokerImpl
 {
     public :
-        BrokerImpl(std::string broker_id)
+        BrokerImpl()
           : m_serverFd(-1)
           , m_clients()
           , m_subscribers()
           , m_last_subscription_id(10000)
         {
             m_loop = std::make_unique<EventLoop>();
-            m_sock = std::make_unique<SocketStream>(broker_id);
+            m_sock = std::make_unique<SocketStream>();
         }
 
         ~BrokerImpl()
@@ -48,10 +48,10 @@ class BrokerImpl
             }
         }
 
-        int32_t listen(void)
+        int32_t listen(std::string broker_id, ConnectionHandler on_conn)
         {
 
-            m_serverFd = m_sock->listen();
+            m_serverFd = m_sock->listen(broker_id);
             if(m_serverFd < 0) 
             {
                 LOGE << "listen failed: ";
@@ -165,7 +165,7 @@ class BrokerImpl
 
             EventLoopItem loop_item;
             loop_item.fd = m_serverFd;
-            loop_item.dispatch = [this](int fd) -> void
+            loop_item.dispatch = [this, on_conn](int fd) -> void
             {
                 int  conn_sock;
 
@@ -173,6 +173,11 @@ class BrokerImpl
                 if (conn_sock < 0) {
                     LOGE << "accept failed:";
                     return;
+                }
+
+                if(on_conn != nullptr)
+                {
+                    on_conn(conn_sock);
                 }
 
                 EventLoopItem conn_item;
@@ -325,18 +330,18 @@ class BrokerImpl
         int32_t                         m_last_subscription_id;
 };
 
-Broker::Broker(std::string broker_id)
+Broker::Broker()
 {
-    m_impl = std::make_unique<BrokerImpl>(broker_id);
+    m_impl = std::make_unique<BrokerImpl>();
 }
 
 Broker::~Broker()
 {
 }
 
-int32_t Broker::listen(void)
+int32_t Broker::listen(std::string broker_id, ConnectionHandler on_conn)
 {
-    return m_impl->listen();    
+    return m_impl->listen(broker_id, on_conn);    
 }
 void Broker::run(void)
 {
@@ -346,6 +351,11 @@ void Broker::run(void)
 void Broker::stop(void)
 {
     m_impl->stop();
+}
+
+void Broker::read_event(int fd)
+{
+    m_impl->read_event(fd);
 }
 
 }
