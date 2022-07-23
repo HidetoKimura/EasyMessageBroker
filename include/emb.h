@@ -16,6 +16,7 @@ namespace emb {
 using namespace ez::stream;
 
 typedef uint32_t emb_id_t;
+
 using ConnectionHandler = std::function<void(int new_fd)>;
 
 class BrokerImpl;
@@ -26,7 +27,7 @@ class Broker
         Broker();
         ~Broker();
 
-        int32_t listen(std::string broker_id, ConnectionHandler on_conn = nullptr);
+        int32_t listen(std::string broker_id, ConnectionHandler on_listen = nullptr, ConnectionHandler on_conn = nullptr);
 
         void run(void);
         void stop(void);
@@ -45,11 +46,17 @@ using namespace std;
 
 class PubSubImpl;
 
+/*
 class SubscribeHandler
 {
     public:
         virtual void handleMessage(std::string topic, void *buf, int32_t len) = 0;
 };
+*/
+
+using SubscribeHandler = std::function<void(std::string topic, void *buf, int32_t len)>;
+
+using ResultHandler = std::function<void(emb_id_t id)>;
 
 class PubSub 
 {
@@ -59,8 +66,8 @@ class PubSub
 
         int32_t connect(std::string broker_id, ConnectionHandler on_conn = nullptr);
 
-        emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler);
-        void unsubscribe(emb_id_t subscription_id);
+        void subscribe(std::string topic, SubscribeHandler on_subsribe, ResultHandler on_result);
+        void unsubscribe(emb_id_t subscription_id, ResultHandler on_result);
         void publish(std::string topic, void* buf , int32_t len);
         void publish(std::string topic, void* buf , int32_t len, emb_id_t to_id);
 

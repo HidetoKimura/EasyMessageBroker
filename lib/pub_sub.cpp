@@ -4,6 +4,7 @@
 #include <vector>
 #include <list>
 #include <functional>
+#include <mutex>
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -20,9 +21,10 @@ namespace emb {
 using namespace ez::stream;
 
 struct SubscriberItemClient {
-    emb_id_t        subscription_id;
-    std::string     topic;
-    std::shared_ptr<SubscribeHandler> handler;
+    emb_id_t            subscription_id;
+    std::string         topic;
+    SubscribeHandler    on_subscribe;
+    ResultHandler       on_result;
 };
 
 class PubSubImpl
@@ -30,6 +32,7 @@ class PubSubImpl
     public:
         PubSubImpl()
             : m_fd(-1)
+            , m_mtx()
             , m_last_subscription_id(EMB_ID_NOT_USE)
             , m_subscribers()
         {
@@ -45,7 +48,7 @@ class PubSubImpl
                 m_sock->close(m_fd);
             }
         }
-
+        
         int32_t connect(std::string broker_id, ConnectionHandler on_conn)
         {
             int32_t ret;
@@ -96,11 +99,13 @@ class PubSubImpl
 
                 LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", data =" << msg->data << ", subscription_id =" << msg->subscription_id;
 
+                std::unique_lock<std::mutex> lk(m_mtx);
                 for(auto it = m_subscribers.begin(); it != m_subscribers.end(); it++ ) {
                     if((*it).subscription_id == msg->subscription_id ) {
-                        (*it).handler->handleMessage(topic, msg->data, msg->data_len);
+                        (*it).on_subscribe(topic, msg->data, msg->data_len);
                     }
                 }
+                lk.unlock();
             };
             m_dispatch_list.push_back(command_item);
 
@@ -126,8 +131,22 @@ class PubSubImpl
 
                 LOGI << "event =" << msg->header.type << ", topic =" << msg->topic << ", clinet_id =" << msg->subscription_id;
 
-                m_last_subscription_id = msg->subscription_id;
-         
+                std::unique_lock<std::mutex> lk(m_mtx);
+                for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++)
+                {
+                    if((*it).subscription_id == EMB_ID_NOT_USE && (*it).topic == topic && (*it).on_result != nullptr) {
+                        (*it).subscription_id = msg->subscription_id;   
+                        (*it).on_result(msg->subscription_id);
+                        (*it).on_result = nullptr;
+                        break;
+                    }
+                }
+                lk.unlock();
+
+                dump_subcribes();
+
+                return;
+
             };
             m_dispatch_list.push_back(command_item);
 
@@ -143,17 +162,23 @@ class PubSubImpl
                     return;                    
                 }
 
-                LOGI << "event =" << msg->header.type << ", clinet_id =" << msg->subscription_id;
+                LOGI << "event =" << msg->header.type << ", subscription_id =" << msg->subscription_id;
 
+                std::unique_lock<std::mutex> lk(m_mtx);
                 for (auto it = m_subscribers.begin(); it != m_subscribers.end();)
                 {
                     if((*it).subscription_id == msg->subscription_id) {
+                        if((*it).on_result != nullptr) {                        
+                            (*it).on_result(msg->subscription_id);
+                            (*it).on_result = nullptr;
+                        }
                         it = m_subscribers.erase(it);
                     }
                     else {
                         it++;
                     }
                 }
+                lk.unlock();    
 
                 dump_subcribes();
 
@@ -173,14 +198,24 @@ class PubSubImpl
 
         }
 
-        emb_id_t subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler)
+        void subscribe(std::string topic, SubscribeHandler on_subscribe, ResultHandler on_result)
         {
             emb_msg_SUBSCRIBE_t msg;
 
             if(topic.size() > sizeof(msg.topic) - 1) {
                 LOGE << "error :bad topic";
-                return EMB_ID_NOT_USE; 
+                return; 
             }
+
+            SubscriberItemClient item;
+            item.topic = topic;
+            item.on_subscribe = on_subscribe;
+            item.on_result = on_result;
+            item.subscription_id = EMB_ID_NOT_USE;
+
+            std::unique_lock<std::mutex> lk(m_mtx);
+            m_subscribers.push_back(item);
+            lk.unlock();
 
             msg.topic_len = sizeof(msg.topic);
             memset(msg.topic, 0, msg.topic_len);
@@ -193,27 +228,29 @@ class PubSubImpl
             int32_t ret = m_sock->write(m_fd, &msg, w_len);
             if(ret != w_len) {
                 LOGE << "write fail";
-                return EMB_ID_NOT_USE; 
+                return ; 
             }
 
-            read_event(m_fd);
 
-            SubscriberItemClient item;
-            item.topic = topic;
-            item.handler = std::move(handler);
-            item.subscription_id = m_last_subscription_id;
-            m_subscribers.push_back(item);
-
-            m_last_subscription_id = EMB_ID_NOT_USE;
-
-            dump_subcribes();
-
-            return (item.subscription_id);
+            return ;
         }
 
-        void unsubscribe(emb_id_t subscription_id)
+        void unsubscribe(emb_id_t subscription_id, ResultHandler on_result)
         {
             emb_msg_UNSUBSCRIBE_t msg;
+
+            std::unique_lock<std::mutex> lk(m_mtx);
+            for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++)
+            {
+                if((*it).subscription_id == subscription_id) {
+                    if((*it).on_result != nullptr) {
+                        LOGE << "NOT completed previous request.";
+                        return;
+                    }
+                    (*it).on_result = on_result;
+                }
+            }
+            lk.unlock();
 
             msg.subscription_id_len = sizeof(msg.subscription_id);
             msg.subscription_id     = subscription_id;
@@ -269,9 +306,11 @@ class PubSubImpl
 
         void dump_subcribes ()
         {
+            std::unique_lock<std::mutex> lk(m_mtx);
+
             std::cout << "#### client subscribers" << std::endl;          
             for (auto it = m_subscribers.begin(); it != m_subscribers.end(); it++) {
-                std::cout << (*it).subscription_id << ", " << (*it).topic << ", " << (*it).handler << std::endl;          
+                std::cout << (*it).subscription_id << ", " << (*it).topic << std::endl;          
             }
             std::cout << "####" << std::endl;          
         }
@@ -329,6 +368,7 @@ class PubSubImpl
 
     private:
         int                                 m_fd;
+        std::mutex                          m_mtx;
         emb_id_t                            m_last_subscription_id;
         std::unique_ptr<EventLoop>          m_loop;
         std::unique_ptr<SocketStream>       m_sock;
@@ -350,14 +390,14 @@ int32_t PubSub::connect(std::string broker_id,  ConnectionHandler on_conn)
     return m_impl->connect(broker_id, on_conn);
 }
 
-emb_id_t PubSub::subscribe(std::string topic, std::unique_ptr<SubscribeHandler> handler)
+void PubSub::subscribe(std::string topic, SubscribeHandler on_subsribe, ResultHandler on_result)
 {
-    return m_impl->subscribe(topic, std::move(handler));
+    return m_impl->subscribe(topic, on_subsribe, on_result);
 }
 
-void PubSub::unsubscribe(emb_id_t subscription_id)
+void PubSub::unsubscribe(emb_id_t subscription_id, ResultHandler on_result)
 {
-    return m_impl->unsubscribe(subscription_id);
+    return m_impl->unsubscribe(subscription_id, on_result);
 }
 
 void PubSub::publish(std::string topic, void* buf , int32_t len)

@@ -12,6 +12,7 @@ int main()
     std::unique_ptr<Broker> broker = std::make_unique<Broker>();
 
     auto ret = broker->listen("/tmp/test", 
+                [](int new_fd){ std::cout << "new listen fd = " << new_fd << std::endl; },
                 [](int new_fd){ std::cout << "new broker fd = " << new_fd << std::endl; });
     if(ret < 0) {
         std::cout << "listen failed:" << std::endl;

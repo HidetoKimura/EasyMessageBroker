@@ -48,7 +48,7 @@ class BrokerImpl
             }
         }
 
-        int32_t listen(std::string broker_id, ConnectionHandler on_conn)
+        int32_t listen(std::string broker_id, ConnectionHandler on_listen, ConnectionHandler on_conn)
         {
 
             m_serverFd = m_sock->listen(broker_id);
@@ -56,6 +56,12 @@ class BrokerImpl
             {
                 LOGE << "listen failed: ";
                 return -1; 
+            }
+
+
+            if(on_listen != nullptr)
+            {
+                on_listen(m_serverFd);
             }
 
             EmbCommandItem dispatch_item;
@@ -339,9 +345,9 @@ Broker::~Broker()
 {
 }
 
-int32_t Broker::listen(std::string broker_id, ConnectionHandler on_conn)
+int32_t Broker::listen(std::string broker_id, ConnectionHandler on_listen, ConnectionHandler on_conn)
 {
-    return m_impl->listen(broker_id, on_conn);    
+    return m_impl->listen(broker_id, on_listen, on_conn);    
 }
 void Broker::run(void)
 {

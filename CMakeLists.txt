@@ -21,3 +21,6 @@ TARGET_LINK_LIBRARIES(broker emb)
 
 ADD_EXECUTABLE(pubsub  "sample/cpp/pub_sub_test.cpp")
 TARGET_LINK_LIBRARIES(pubsub emb)
+
+ADD_EXECUTABLE(ex_loop  "sample/cpp/external_loop_test.cpp")
+TARGET_LINK_LIBRARIES(ex_loop emb pthread)

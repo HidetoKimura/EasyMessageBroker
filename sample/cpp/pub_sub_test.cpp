@@ -17,6 +17,7 @@
 using namespace emb;
 using namespace ez::stream;
 
+/*
 class MySubscribeHandler : public SubscribeHandler
 {
     public:
@@ -25,6 +26,7 @@ class MySubscribeHandler : public SubscribeHandler
             std::cout << this << ":handleMessage():" << (char*)buf << std::endl;
         }
 };
+*/
 
 static void usage(const char* name )
 {
@@ -137,9 +139,10 @@ int main(int argc, char *argv[])
         auto handler = [&](int argc, char* argv[]) -> void {
             if(argc == 2 && strcmp(argv[0], "sub") == 0)
             {
-                std::unique_ptr<SubscribeHandler> handler = std::make_unique<MySubscribeHandler>();
-                auto id = pubsub->subscribe(std::string(argv[1]), std::move(handler));
-                std::cout << "sub id = " << id << std::endl;
+                pubsub->subscribe(std::string(argv[1]), 
+                    [](std::string topic, void *buf, int32_t len){ std::cout << "on_subscribe:" << (char*)buf << std::endl;},
+                    [](emb_id_t id){ std::cout << "sub id = " << id << std::endl;});
+                
             }
             else if(argc == 3 && strcmp(argv[0], "pub") == 0)
             {
@@ -151,7 +154,7 @@ int main(int argc, char *argv[])
             }
             else if(argc == 2 && strcmp(argv[0], "unsub") == 0)
             {
-                pubsub->unsubscribe(std::stoi(argv[1]));
+                pubsub->unsubscribe(std::stoi(argv[1]), [](emb_id_t id){ std::cout << "sub id = " << id << std::endl;});
             }
             else if(argc == 1 && strcmp(argv[0], "stop") == 0)
             {
